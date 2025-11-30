@@ -11,7 +11,6 @@ namespace YüzmeAntrenmanıPlanlama
         private MenuStrip menuStrip1;
         private ToolStripMenuItem profilToolStripMenuItem;
         private ToolStripMenuItem antrenmanOlusturToolStripMenuItem;
-        // "Geçmiş Antrenmanlar" menü öğesi kaldırıldı.
         private TabControl tabControl1;
         private TabPage tabPageAntrenmanOlustur;
         private TabPage tabPageProfil;
@@ -42,6 +41,10 @@ namespace YüzmeAntrenmanıPlanlama
         private NumericUpDown nudToplamSure;
         private NumericUpDown nudHaftada;
         private NumericUpDown nudToplamMesafe;
+        // YENİ EKLENEN KONTROLLER
+        private Label lblAntrenmanGrupSec;
+        private ComboBox cmbAntrenmanGrup;
+        // -----------------------
         private CheckBox chkEkEkipman;
         private Button btnOlustur;
 
@@ -51,7 +54,6 @@ namespace YüzmeAntrenmanıPlanlama
         private DataGridView dgvProgram;
 
         // Profil Sekmesi Bileşenleri
-        // NOT: splitContainerProfil kaldırıldı.
         private Panel panelProfilLeft;
         private Label lblOgrenciYonetimiBaslik;
         private Label lblAd;
@@ -64,6 +66,7 @@ namespace YüzmeAntrenmanıPlanlama
         private TextBox txtGrupInput;
         private Button btnEkleOgrenci;
         private Button btnSilOgrenci;
+        private Button btnSilGrup;
         private ListBox lstOgrenciListesi;
 
         private Panel panelProfilRight;
@@ -89,7 +92,6 @@ namespace YüzmeAntrenmanıPlanlama
             this.menuStrip1 = new MenuStrip();
             this.profilToolStripMenuItem = new ToolStripMenuItem();
             this.antrenmanOlusturToolStripMenuItem = new ToolStripMenuItem();
-            // gecmisAntrenmanlarToolStripMenuItem kaldırıldı
             this.tabControl1 = new TabControl();
             this.tabPageProfil = new TabPage();
             this.tabPageAntrenmanOlustur = new TabPage();
@@ -120,6 +122,10 @@ namespace YüzmeAntrenmanıPlanlama
             this.nudToplamSure = new NumericUpDown();
             this.nudHaftada = new NumericUpDown();
             this.nudToplamMesafe = new NumericUpDown();
+            // YENİ
+            this.lblAntrenmanGrupSec = new Label();
+            this.cmbAntrenmanGrup = new ComboBox();
+            // ----
             this.chkEkEkipman = new CheckBox();
             this.btnOlustur = new Button();
 
@@ -129,7 +135,7 @@ namespace YüzmeAntrenmanıPlanlama
             this.btnPdfIndir = new Button();
             this.dgvProgram = new DataGridView();
 
-            // Profil Sekmesi - Paneller (SplitContainer yerine)
+            // Profil Sekmesi - Paneller
             this.panelProfilLeft = new Panel();
             this.panelProfilRight = new Panel();
 
@@ -145,6 +151,7 @@ namespace YüzmeAntrenmanıPlanlama
             this.txtGrupInput = new TextBox();
             this.btnEkleOgrenci = new Button();
             this.btnSilOgrenci = new Button();
+            this.btnSilGrup = new Button();
             this.lstOgrenciListesi = new ListBox();
 
             // Profil Sekmesi - Sağ Panel Kontrolleri
@@ -158,7 +165,7 @@ namespace YüzmeAntrenmanıPlanlama
             this.menuStrip1.SuspendLayout();
             this.tabControl1.SuspendLayout();
             this.tabPageAntrenmanOlustur.SuspendLayout();
-            this.tabPageProfil.SuspendLayout(); // Profil sekmesi için de SuspendLayout
+            this.tabPageProfil.SuspendLayout();
             this.leftContainer.SuspendLayout();
             this.grpBiyomotorik.SuspendLayout();
             this.tblBiyomotorik.SuspendLayout();
@@ -171,8 +178,6 @@ namespace YüzmeAntrenmanıPlanlama
             ((ISupportInitialize)(this.nudToplamMesafe)).BeginInit();
             this.panelSag.SuspendLayout();
             ((ISupportInitialize)(this.dgvProgram)).BeginInit();
-
-            // splitContainerProfil ile ilgili tüm BeginInit/SuspendLayout çağrıları kaldırıldı.
             this.panelProfilLeft.SuspendLayout();
             this.panelProfilRight.SuspendLayout();
             ((ISupportInitialize)(this.dgvGecmisAntrenmanlarProfil)).BeginInit();
@@ -182,7 +187,6 @@ namespace YüzmeAntrenmanıPlanlama
             this.menuStrip1.Items.AddRange(new ToolStripItem[] {
                         this.profilToolStripMenuItem,
                         this.antrenmanOlusturToolStripMenuItem
-                        // this.gecmisAntrenmanlarToolStripMenuItem kaldırıldı
                     });
             this.menuStrip1.Location = new Point(0, 0);
             this.menuStrip1.Name = "menuStrip1";
@@ -218,7 +222,6 @@ namespace YüzmeAntrenmanıPlanlama
             this.tabPageProfil.Name = "tabPageProfil";
             this.tabPageProfil.Text = "Profil";
             this.tabPageProfil.UseVisualStyleBackColor = true;
-            // splitContainerProfil yerine doğrudan paneller eklenecek.
 
             this.tabPageAntrenmanOlustur.Name = "tabPageAntrenmanOlustur";
             this.tabPageAntrenmanOlustur.Text = "Antrenman Oluştur";
@@ -231,7 +234,9 @@ namespace YüzmeAntrenmanıPlanlama
             // -------------------- ANTRENMAN OLUŞTUR SEKMESİ (Sol Panel) --------------------
             int leftPanelWidth = 820;
             int groupHeight = 135;
-            int antrenmanBilgileriGroupHeight = 210;
+            // DEĞİŞİKLİK: Yeni satır eklendiği için bu grubun yüksekliği artırıldı.
+            // Eski değer: 210, Yeni değer: 250 (Sığması için zorunlu)
+            int antrenmanBilgileriGroupHeight = 250;
 
             this.leftContainer.Dock = DockStyle.Left;
             this.leftContainer.Width = leftPanelWidth;
@@ -305,7 +310,7 @@ namespace YüzmeAntrenmanıPlanlama
             }
             this.grpYuzmeStili.Controls.Add(this.tblYuzmeStili);
 
-            // Antrenman Bilgileri
+            // Antrenman Bilgileri (GÜNCELLENDİ)
             this.grpAntrenmanBilgileri.Text = "Antrenman Bilgileri";
             this.grpAntrenmanBilgileri.Dock = DockStyle.Top;
             this.grpAntrenmanBilgileri.Height = antrenmanBilgileriGroupHeight;
@@ -315,10 +320,15 @@ namespace YüzmeAntrenmanıPlanlama
             this.tblAntrenmanBilgileri.ColumnCount = 2;
             this.tblAntrenmanBilgileri.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
             this.tblAntrenmanBilgileri.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
-            this.tblAntrenmanBilgileri.RowCount = 4;
+            // DEĞİŞİKLİK: Satır sayısı 4'ten 5'e çıkarıldı.
+            this.tblAntrenmanBilgileri.RowCount = 5;
+            // Mevcut 3 satır
             this.tblAntrenmanBilgileri.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
             this.tblAntrenmanBilgileri.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
             this.tblAntrenmanBilgileri.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
+            // YENİ EKLENEN SATIR (Grup Seçimi için)
+            this.tblAntrenmanBilgileri.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
+            // SON SATIR (Buton için, %100 yükseklik)
             this.tblAntrenmanBilgileri.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             this.tblAntrenmanBilgileri.Padding = new Padding(4);
 
@@ -352,6 +362,17 @@ namespace YüzmeAntrenmanıPlanlama
             this.nudToplamMesafe.Dock = DockStyle.Fill;
             this.nudToplamMesafe.Font = btnFont;
 
+            // YENİ KONTROLLERİN TANIMLANMASI
+            this.lblAntrenmanGrupSec.Text = "Grup Seç:";
+            this.lblAntrenmanGrupSec.Anchor = AnchorStyles.Left;
+            this.lblAntrenmanGrupSec.Font = labelFont;
+            this.lblAntrenmanGrupSec.AutoSize = true;
+
+            this.cmbAntrenmanGrup.Dock = DockStyle.Fill;
+            this.cmbAntrenmanGrup.Font = btnFont;
+            this.cmbAntrenmanGrup.DropDownStyle = ComboBoxStyle.DropDownList;
+            // İtemler Form1.cs üzerinden yüklenecek.
+
             this.chkEkEkipman.Text = "Ek Ekipman Kullanılsın mı?";
             this.chkEkEkipman.Anchor = AnchorStyles.Left;
             this.chkEkEkipman.Font = labelFont;
@@ -367,14 +388,22 @@ namespace YüzmeAntrenmanıPlanlama
             this.btnOlustur.FlatAppearance.BorderSize = 1;
             this.btnOlustur.FlatAppearance.BorderColor = Color.Gray;
 
+            // KONTROLLERİN TABLOYA EKLENMESİ (Sıra önemli)
+            // Satır 0
             this.tblAntrenmanBilgileri.Controls.Add(this.lblToplamSure, 0, 0);
             this.tblAntrenmanBilgileri.Controls.Add(this.nudToplamSure, 1, 0);
+            // Satır 1
             this.tblAntrenmanBilgileri.Controls.Add(this.lblHaftada, 0, 1);
             this.tblAntrenmanBilgileri.Controls.Add(this.nudHaftada, 1, 1);
+            // Satır 2
             this.tblAntrenmanBilgileri.Controls.Add(this.lblToplamMesafe, 0, 2);
             this.tblAntrenmanBilgileri.Controls.Add(this.nudToplamMesafe, 1, 2);
-            this.tblAntrenmanBilgileri.Controls.Add(this.chkEkEkipman, 0, 3);
-            this.tblAntrenmanBilgileri.Controls.Add(this.btnOlustur, 1, 3);
+            // YENİ SATIR 3 (Grup Seçimi)
+            this.tblAntrenmanBilgileri.Controls.Add(this.lblAntrenmanGrupSec, 0, 3);
+            this.tblAntrenmanBilgileri.Controls.Add(this.cmbAntrenmanGrup, 1, 3);
+            // KAYDIRILAN SATIR 4 (Buton ve Checkbox)
+            this.tblAntrenmanBilgileri.Controls.Add(this.chkEkEkipman, 0, 4);
+            this.tblAntrenmanBilgileri.Controls.Add(this.btnOlustur, 1, 4);
 
             this.grpAntrenmanBilgileri.Controls.Add(this.tblAntrenmanBilgileri);
 
@@ -400,45 +429,31 @@ namespace YüzmeAntrenmanıPlanlama
             this.btnPdfIndir.FlatAppearance.BorderColor = Color.Gray;
             this.btnPdfIndir.Margin = new Padding(0, 8, 0, 8);
 
-            // DataGridView (dgvProgram) Görsel Ayarları - YENİ TİP (LİSTE GÖRÜNÜMÜ)
+            // DataGridView (dgvProgram) Görsel Ayarları - LİSTE GÖRÜNÜMÜ
             this.dgvProgram.Dock = DockStyle.Fill;
             this.dgvProgram.AllowUserToAddRows = false;
             this.dgvProgram.AllowUserToDeleteRows = false;
             this.dgvProgram.RowHeadersVisible = false;
-            // Sütun başlıklarını gizle (Bölüm, Aktivite vs. yazan yer)
             this.dgvProgram.ColumnHeadersVisible = false;
             this.dgvProgram.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            // Fontu biraz büyütelim okunaklı olsun
             this.dgvProgram.Font = new Font("Segoe UI", 11F, FontStyle.Regular);
-
-            // Tasarım İyileştirmeleri
-            this.dgvProgram.BackgroundColor = Color.White; // Arka plan beyaz
+            this.dgvProgram.BackgroundColor = Color.White;
             this.dgvProgram.BorderStyle = BorderStyle.None;
-            this.dgvProgram.CellBorderStyle = DataGridViewCellBorderStyle.None; // Hücre çizgilerini kaldıralım (daha temiz görünüm)
-
-            // Satır Stilleri
-            this.dgvProgram.DefaultCellStyle.BackColor = Color.WhiteSmoke; // Satır arka planı hafif gri
+            this.dgvProgram.CellBorderStyle = DataGridViewCellBorderStyle.None;
+            this.dgvProgram.DefaultCellStyle.BackColor = Color.WhiteSmoke;
             this.dgvProgram.DefaultCellStyle.ForeColor = Color.Black;
-            this.dgvProgram.DefaultCellStyle.SelectionBackColor = Color.FromArgb(200, 200, 200); // Seçim rengi açık gri
+            this.dgvProgram.DefaultCellStyle.SelectionBackColor = Color.FromArgb(200, 200, 200);
             this.dgvProgram.DefaultCellStyle.SelectionForeColor = Color.Black;
-            // Padding'i (iç boşluk) artıralım ki yazılar sıkışık durmasın
             this.dgvProgram.DefaultCellStyle.Padding = new Padding(10, 8, 10, 8);
-
-            // Satır yüksekliğini içeriğe göre otomatik ayarla (Metin kaydırma için şart)
             this.dgvProgram.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
-            // Sütun Tanımları - SADECE TEK BİR SÜTUN OLACAK
             var colProgramIcerik = new DataGridViewTextBoxColumn()
             {
                 Name = "colProgramIcerik",
-                // HeaderText boş, çünkü zaten gizledik
                 HeaderText = "",
-                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill // Tüm alanı kaplasın
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
             };
-            // Detay sütunu için metin kaydırma (text wrapping) AÇIK
             colProgramIcerik.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
-
-            // Tek sütunu tabloya ekle
             this.dgvProgram.Columns.Add(colProgramIcerik);
 
             this.panelSag.Controls.Add(this.dgvProgram);
@@ -448,23 +463,21 @@ namespace YüzmeAntrenmanıPlanlama
             this.tabPageAntrenmanOlustur.Controls.Add(this.panelSag);
             this.tabPageAntrenmanOlustur.Controls.Add(this.leftContainer);
 
-            // -------------------- PROFİL SEKMESİ (Splitter Kaldırıldı) --------------------
+            // -------------------- PROFİL SEKMESİ --------------------
 
             // Sol Panel (panelProfilLeft) Ayarları
-            // SplitContainer yerine DockStyle.Left ve sabit genişlik kullanıyoruz.
             this.panelProfilLeft.Dock = DockStyle.Left;
-            this.panelProfilLeft.Width = 500; // Sabit genişlik (isteğe göre artırılabilir)
+            this.panelProfilLeft.Width = 500;
             this.panelProfilLeft.Padding = new Padding(15);
             this.panelProfilLeft.BackColor = Color.LightGray;
 
             // Sağ Panel (panelProfilRight) Ayarları
-            this.panelProfilRight.Dock = DockStyle.Fill; // Kalan alanı doldurur
+            this.panelProfilRight.Dock = DockStyle.Fill;
             this.panelProfilRight.Padding = new Padding(15);
             this.panelProfilRight.BackColor = Color.WhiteSmoke;
 
-            // Panelleri Profil Sekmesine Ekleme (Önce Left, sonra Fill)
-            this.tabPageProfil.Controls.Add(this.panelProfilRight); // Fill olanı önce ekle (z-order'da altta kalsın)
-            this.tabPageProfil.Controls.Add(this.panelProfilLeft);  // Left olanı sonra ekle
+            this.tabPageProfil.Controls.Add(this.panelProfilRight);
+            this.tabPageProfil.Controls.Add(this.panelProfilLeft);
 
             // -------------------- PROFİL SOL PANEL KONTROLLERİ --------------------
             this.lblOgrenciYonetimiBaslik.Text = "Öğrenci Yönetimi";
@@ -527,19 +540,23 @@ namespace YüzmeAntrenmanıPlanlama
             this.btnSilOgrenci.FlatAppearance.BorderSize = 1;
             this.btnSilOgrenci.FlatAppearance.BorderColor = Color.DarkGray;
 
+            this.btnSilGrup.Text = "Grup Sil";
+            this.btnSilGrup.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            this.btnSilGrup.Height = 30;
+            this.btnSilGrup.Dock = DockStyle.Top;
+            this.btnSilGrup.FlatStyle = FlatStyle.Flat;
+            this.btnSilGrup.FlatAppearance.BorderSize = 1;
+            this.btnSilGrup.FlatAppearance.BorderColor = Color.IndianRed;
+            this.btnSilGrup.ForeColor = Color.IndianRed;
+            this.btnSilGrup.Margin = new Padding(0, 0, 0, 10);
+
             this.lstOgrenciListesi.Dock = DockStyle.Fill;
             this.lstOgrenciListesi.Font = btnFont;
-            this.lstOgrenciListesi.Items.AddRange(new object[] {
-                        "Ali Yılmaz (A Grubu)",
-                        "Ayşe Demir (B Grubu)",
-                        "Can Kara (A Grubu)",
-                        "Deniz Ak (C Grubu)"
-                    });
 
-            // KONTROLLERİN panelProfilLeft'e EKLENME SIRASI (Düzeltilmiş)
-            this.panelProfilLeft.Controls.Add(this.lstOgrenciListesi); // Fill (en alta)
-            this.panelProfilLeft.Controls.Add(this.btnSilOgrenci); // Top (yukarı doğru)
+            this.panelProfilLeft.Controls.Add(this.lstOgrenciListesi);
+            this.panelProfilLeft.Controls.Add(this.btnSilOgrenci);
             this.panelProfilLeft.Controls.Add(this.btnEkleOgrenci);
+            this.panelProfilLeft.Controls.Add(this.btnSilGrup);
             this.panelProfilLeft.Controls.Add(this.txtGrupInput);
             this.panelProfilLeft.Controls.Add(this.lblGrupInput);
             this.panelProfilLeft.Controls.Add(this.cmbGrup);
@@ -548,7 +565,7 @@ namespace YüzmeAntrenmanıPlanlama
             this.panelProfilLeft.Controls.Add(this.lblSoyad);
             this.panelProfilLeft.Controls.Add(this.cmbAd);
             this.panelProfilLeft.Controls.Add(this.lblAd);
-            this.panelProfilLeft.Controls.Add(this.lblOgrenciYonetimiBaslik); // Top (en üste)
+            this.panelProfilLeft.Controls.Add(this.lblOgrenciYonetimiBaslik);
 
             this.cmbGrup.SelectedIndexChanged += (sender, e) =>
             {
@@ -597,33 +614,29 @@ namespace YüzmeAntrenmanıPlanlama
             this.btnSeciliyiIndir.FlatAppearance.BorderSize = 1;
             this.btnSeciliyiIndir.FlatAppearance.BorderColor = Color.DarkGray;
 
-            // KONTROLLERİN panelProfilRight'a EKLENME SIRASI (Düzeltilmiş)
-            this.panelProfilRight.Controls.Add(this.dgvGecmisAntrenmanlarProfil); // Fill (ortaya)
-            this.panelProfilRight.Controls.Add(this.btnSeciliyiIndir); // Bottom (aşağıya doğru)
-            this.panelProfilRight.Controls.Add(this.btnPDFOlarakIndirProfil); // Bottom (en alta)
-            this.panelProfilRight.Controls.Add(this.lblGecmisAntrenmanlarProfil); // Top (en üste)
+            this.panelProfilRight.Controls.Add(this.dgvGecmisAntrenmanlarProfil);
+            this.panelProfilRight.Controls.Add(this.btnSeciliyiIndir);
+            this.panelProfilRight.Controls.Add(this.btnPDFOlarakIndirProfil);
+            this.panelProfilRight.Controls.Add(this.lblGecmisAntrenmanlarProfil);
 
             // -------------------- FORM AYARLARI --------------------
             this.AutoScaleDimensions = new SizeF(8F, 20F);
             this.AutoScaleMode = AutoScaleMode.Font;
-            this.ClientSize = new Size(1500, 700); // Geniş başlangıç boyutu
+            this.ClientSize = new Size(1500, 700);
             this.Controls.Add(this.tabControl1);
             this.Controls.Add(this.menuStrip1);
             this.MainMenuStrip = this.menuStrip1;
             this.Name = "Form1";
             this.Text = "Yüzme Antrenmanı Planlama";
 
-            // ResumeLayout
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();
             this.tabControl1.ResumeLayout(false);
-
             this.tabPageProfil.ResumeLayout(false);
             this.panelProfilLeft.ResumeLayout(false);
             this.panelProfilLeft.PerformLayout();
             this.panelProfilRight.ResumeLayout(false);
             ((ISupportInitialize)(this.dgvGecmisAntrenmanlarProfil)).EndInit();
-
             this.tabPageAntrenmanOlustur.ResumeLayout(false);
             this.leftContainer.ResumeLayout(false);
             this.grpBiyomotorik.ResumeLayout(false);
@@ -632,12 +645,12 @@ namespace YüzmeAntrenmanıPlanlama
             this.tblYuzmeStili.ResumeLayout(false);
             this.grpAntrenmanBilgileri.ResumeLayout(false);
             this.tblAntrenmanBilgileri.ResumeLayout(false);
+            this.tblAntrenmanBilgileri.PerformLayout();
             ((ISupportInitialize)(this.nudToplamSure)).EndInit();
             ((ISupportInitialize)(this.nudHaftada)).EndInit();
             ((ISupportInitialize)(this.nudToplamMesafe)).EndInit();
             this.panelSag.ResumeLayout(false);
             ((ISupportInitialize)(this.dgvProgram)).EndInit();
-
             this.ResumeLayout(false);
             this.PerformLayout();
         }
