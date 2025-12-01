@@ -10,7 +10,7 @@ namespace YüzmeAntrenmanıPlanlama
     public class GeminiManager
     {
         // BURAYA ALDIĞIN 'AIza...' İLE BAŞLAYAN ANAHTARI YAPIŞTIR
-        private const string ApiKey = "AIzaSyDhXD9FfkNzwBK92FPuFpNz3s3bsGATM9I";
+        private const string ApiKey = "BurayaApiyiGiriniz";
 
         private const string ApiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
