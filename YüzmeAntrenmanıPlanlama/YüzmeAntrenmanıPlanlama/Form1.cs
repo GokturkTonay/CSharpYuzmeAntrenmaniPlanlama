@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
@@ -9,10 +9,18 @@ using Newtonsoft.Json;
 
 namespace YüzmeAntrenmanıPlanlama
 {
+    // JSON Deserialize işlemi için yardımcı sınıf
+    public class AntrenmanSatiri
+    {
+        public string bolum { get; set; }
+        public string aktivite { get; set; }
+        public string detay { get; set; }
+    }
+
     public partial class Form1 : Form
     {
-        private Button[] biyomotorikButtons = new Button[0];
-        private Button[] yuzmeStiliButtons = new Button[0];
+        private Button[] biyomotorikButtons;
+        private Button[] yuzmeStiliButtons;
         private DbManager dbManager = new DbManager();
         private List<string> currentDbList = new List<string>();
         private readonly string[] initialGroups = { "A Grubu", "B Grubu", "C Grubu" };
@@ -27,7 +35,6 @@ namespace YüzmeAntrenmanıPlanlama
             this.btnSilOgrenci.Click += new EventHandler(this.BtnSilOgrenci_Click);
             this.btnSilGrup.Click += new EventHandler(this.BtnSilGrup_Click);
 
-            // Designer hatası alırsan bu satırları silebilirsin:
             this.profilToolStripMenuItem.Click += new EventHandler(this.ProfilToolStripMenuItem_Click);
             this.antrenmanOlusturToolStripMenuItem.Click += new EventHandler(this.AntrenmanOlusturToolStripMenuItem_Click);
 
@@ -35,20 +42,22 @@ namespace YüzmeAntrenmanıPlanlama
 
             foreach (string grup in initialGroups)
             {
-                this.cmbGrup.Items.Add(grup);
-                this.cmbAntrenmanGrup.Items.Add(grup);
+                if (!this.cmbGrup.Items.Contains(grup))
+                    this.cmbGrup.Items.Add(grup);
+                if (!this.cmbAntrenmanGrup.Items.Contains(grup))
+                    this.cmbAntrenmanGrup.Items.Add(grup);
             }
-            this.cmbGrup.Items.Add("Yeni Grup Oluştur...");
+
+            if (!this.cmbGrup.Items.Contains("Yeni Grup Oluştur..."))
+                this.cmbGrup.Items.Add("Yeni Grup Oluştur...");
 
             if (this.cmbGrup.Items.Count > 0) { this.cmbGrup.SelectedIndex = 0; }
             if (this.cmbAntrenmanGrup.Items.Count > 0) { this.cmbAntrenmanGrup.SelectedIndex = 0; }
         }
 
-        // --- MENÜ GEÇİŞLERİ ---
         private void ProfilToolStripMenuItem_Click(object sender, EventArgs e) { tabControl1.SelectedTab = tabPageProfil; }
         private void AntrenmanOlusturToolStripMenuItem_Click(object sender, EventArgs e) { tabControl1.SelectedTab = tabPageAntrenmanOlustur; }
 
-        // --- YARDIMCI METOTLAR ---
         private void OgrenciListesiniGuncelle()
         {
             string selectedGroup = "";
@@ -109,6 +118,7 @@ namespace YüzmeAntrenmanıPlanlama
 
             if (string.IsNullOrEmpty(ad) || string.IsNullOrEmpty(soyad)) { MessageBox.Show("Ad Soyad girin."); return; }
             try { dbManager.AddStudent(ad, soyad, hedefGrup); } catch (Exception ex) { MessageBox.Show(ex.Message); return; }
+
             if (secilenGrup == "Yeni Grup Oluştur...") { cmbGrup.SelectedItem = hedefGrup; txtGrupInput.Clear(); } else { OgrenciListesiniGuncelle(); }
             cmbAd.Text = ""; cmbSoyad.Text = "";
         }
@@ -119,7 +129,18 @@ namespace YüzmeAntrenmanıPlanlama
             string selectedString = lstOgrenciListesi.SelectedItem.ToString();
             if (MessageBox.Show("Silinsin mi?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
-                try { int idx = selectedString.LastIndexOf('('); string grp = selectedString.Substring(idx + 1).Replace(")", ""); string name = selectedString.Substring(0, idx).Trim(); var parts = name.Split(' '); string sn = parts.Last(); string n = string.Join(" ", parts.Take(parts.Length - 1)); dbManager.DeleteStudent(n, sn, grp); OgrenciListesiniGuncelle(); } catch (Exception ex) { MessageBox.Show(ex.Message); }
+                try
+                {
+                    int idx = selectedString.LastIndexOf('(');
+                    string grp = selectedString.Substring(idx + 1).Replace(")", "");
+                    string name = selectedString.Substring(0, idx).Trim();
+                    var parts = name.Split(' ');
+                    string sn = parts.Last();
+                    string n = string.Join(" ", parts.Take(parts.Length - 1));
+                    dbManager.DeleteStudent(n, sn, grp);
+                    OgrenciListesiniGuncelle();
+                }
+                catch (Exception ex) { MessageBox.Show(ex.Message); }
             }
         }
 
@@ -128,21 +149,67 @@ namespace YüzmeAntrenmanıPlanlama
             string g = "";
             if (this.cmbGrup.SelectedItem != null) g = this.cmbGrup.SelectedItem.ToString();
             if (string.IsNullOrEmpty(g) || g == "Yeni Grup Oluştur...") return;
-            if (MessageBox.Show("Grup silinsin mi?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes) { dbManager.DeleteAllInGroup(g); this.cmbGrup.Items.Remove(g); this.cmbAntrenmanGrup.Items.Remove(g); if (this.cmbGrup.Items.Count > 1) this.cmbGrup.SelectedIndex = 0; else this.cmbGrup.SelectedIndex = -1; if (this.cmbAntrenmanGrup.Items.Count > 0) this.cmbAntrenmanGrup.SelectedIndex = 0; else this.cmbAntrenmanGrup.SelectedIndex = -1; }
+            if (MessageBox.Show("Grup silinsin mi?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            {
+                dbManager.DeleteAllInGroup(g);
+                this.cmbGrup.Items.Remove(g);
+                this.cmbAntrenmanGrup.Items.Remove(g);
+                if (this.cmbGrup.Items.Count > 1) this.cmbGrup.SelectedIndex = 0; else this.cmbGrup.SelectedIndex = -1;
+                if (this.cmbAntrenmanGrup.Items.Count > 0) this.cmbAntrenmanGrup.SelectedIndex = 0; else this.cmbAntrenmanGrup.SelectedIndex = -1;
+            }
         }
 
-        private void ConfigureInteractiveButtons() { this.biyomotorikButtons = new Button[] { this.btnDayaniklilik, btnSurat, btnKuvvet, btnEsneklik, btnKoordinasyon }; this.yuzmeStiliButtons = new Button[] { this.btnSerbest, btnSirtustu, btnKurbagalama, btnKelebek }; SetupGroupButtons(this.biyomotorikButtons); SetupGroupButtons(this.yuzmeStiliButtons); }
-        private void SetupGroupButtons(Button[] group) { if (group == null) return; foreach (var btn in group) { if (btn == null) continue; btn.Click -= GroupButton_Click; btn.Click += GroupButton_Click; } }
-        private void GroupButton_Click(object sender, EventArgs e) { Button b = sender as Button; if (b == null) return; if (Array.Exists(this.biyomotorikButtons, x => ReferenceEquals(x, b))) SetSelectedButton(b, this.biyomotorikButtons); if (Array.Exists(this.yuzmeStiliButtons, x => ReferenceEquals(x, b))) SetSelectedButton(b, this.yuzmeStiliButtons); }
-        private void SetSelectedButton(Button c, Button[] g) { foreach (var b in g) { b.FlatAppearance.BorderColor = Color.Gray; b.BackColor = SystemColors.Control; } c.FlatAppearance.BorderColor = Color.DodgerBlue; c.BackColor = Color.FromArgb(230, 245, 255); }
-        private string GetSelectedButtonText(Button[] g) { foreach (var b in g) { if (b.BackColor == Color.FromArgb(230, 245, 255)) return b.Text; } return null; }
+        private void ConfigureInteractiveButtons()
+        {
+            this.biyomotorikButtons = new Button[] { this.btnDayaniklilik, btnSurat, btnKuvvet, btnEsneklik, btnKoordinasyon };
+            this.yuzmeStiliButtons = new Button[] { this.btnSerbest, btnSirtustu, btnKurbagalama, btnKelebek };
+            SetupGroupButtons(this.biyomotorikButtons);
+            SetupGroupButtons(this.yuzmeStiliButtons);
+        }
 
-        private void TabloyaIcerikEkle(string aktivite, string detay) { int i = dgvProgram.Rows.Add(aktivite + ": " + detay); dgvProgram.Rows[i].DefaultCellStyle.WrapMode = DataGridViewTriState.True; }
+        private void SetupGroupButtons(Button[] group)
+        {
+            if (group == null) return;
+            foreach (var btn in group)
+            {
+                if (btn == null) continue;
+                btn.Click -= GroupButton_Click;
+                btn.Click += GroupButton_Click;
+            }
+        }
 
-        // =================================================================================
-        // --- YAPAY ZEKA İLE ANTRENMAN OLUŞTURMA ---
-        // =================================================================================
+        private void GroupButton_Click(object sender, EventArgs e)
+        {
+            Button b = sender as Button;
+            if (b == null) return;
+            if (Array.Exists(this.biyomotorikButtons, x => ReferenceEquals(x, b))) SetSelectedButton(b, this.biyomotorikButtons);
+            if (Array.Exists(this.yuzmeStiliButtons, x => ReferenceEquals(x, b))) SetSelectedButton(b, this.yuzmeStiliButtons);
+        }
 
+        private void SetSelectedButton(Button c, Button[] g)
+        {
+            foreach (var b in g)
+            {
+                b.FlatAppearance.BorderColor = Color.Gray;
+                b.BackColor = SystemColors.Control;
+            }
+            c.FlatAppearance.BorderColor = Color.DodgerBlue;
+            c.BackColor = Color.FromArgb(230, 245, 255);
+        }
+
+        private string GetSelectedButtonText(Button[] g)
+        {
+            foreach (var b in g) { if (b.BackColor == Color.FromArgb(230, 245, 255)) return b.Text; }
+            return null;
+        }
+
+        private void TabloyaIcerikEkle(string aktivite, string detay)
+        {
+            int i = dgvProgram.Rows.Add(aktivite + ": " + detay);
+            dgvProgram.Rows[i].DefaultCellStyle.WrapMode = DataGridViewTriState.True;
+        }
+
+        // --- DEĞİŞİKLİK BURADA BAŞLIYOR ---
         private async void BtnOlustur_Click(object sender, EventArgs e)
         {
             string secilenGrup = "";
@@ -163,49 +230,83 @@ namespace YüzmeAntrenmanıPlanlama
             string ekipmanDurumu = ekipmanVarMi ? "Palet, şnorkel var." : "Ekipman yok.";
 
             string eskiButonMetni = btnOlustur.Text;
-            btnOlustur.Text = "Hazırlanıyor...";
+            btnOlustur.Text = "Groq Hazırlıyor..."; // Kullanıcıya Groq'un çalıştığını gösterelim
             btnOlustur.Enabled = false;
             dgvProgram.Rows.Clear();
 
             try
             {
-                // Prompt içinde JSON formatını özellikle belirtiyoruz
-                string prompt = "Sen bir yüzme antrenörüsün. Aşağıdaki bilgilere göre antrenman yaz.\n" +
-                    "Hedef: " + secilenGrup + ", Odak: " + secilenBiyomotor + ", Stil: " + secilenStil + ", Mesafe: " + toplamMesafe + "m, Ekipman: " + ekipmanDurumu + ".\n" +
-                    "Çıktıyı SADECE şu JSON formatında ver (başka metin yazma):\n" +
-                    "[ { \"bolum\": \"ISINMA\", \"aktivite\": \"...\", \"detay\": \"...\" }, ... ]";
+                // Prompt'u Groq Llama modellerine uygun hale getirelim
+                string prompt = "Sen uzman bir yüzme antrenörüsün. Aşağıdaki bilgilere göre yapılandırılmış bir antrenman programı oluştur.\n" +
+                    "Hedef Grup: " + secilenGrup + "\n" +
+                    "Odak: " + secilenBiyomotor + "\n" +
+                    "Stil: " + secilenStil + "\n" +
+                    "Toplam Mesafe: " + toplamMesafe + "m\n" +
+                    "Ekipman Durumu: " + ekipmanDurumu + "\n\n" +
+                    "ÖNEMLİ: Çıktıyı SADECE aşağıdaki JSON formatında ver. Başka hiçbir metin, açıklama veya markdown bloğu (```json gibi) ekleme.\n" +
+                    "JSON Formatı:\n" +
+                    "{ \"antrenman\": [ { \"bolum\": \"ISINMA\", \"aktivite\": \"200m Serbest\", \"detay\": \"Rahat tempo\" }, ... ] }";
 
+                // GeminiManager yerine GroqManager kullanıyoruz
                 GeminiManager aiManager = new GeminiManager();
-
-                // İsteği gönder
                 string jsonCevap = await aiManager.AntrenmanProgramiIste(prompt);
 
-                // Hata kontrolü
                 if (jsonCevap.StartsWith("HATA:"))
                 {
-                    MessageBox.Show(jsonCevap, "Yapay Zeka Bağlantı Sorunu", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(jsonCevap, "Groq Bağlantı Sorunu", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                // JSON Temizliği
+                // Groq bazen markdown ekleyebilir, temizleyelim
                 jsonCevap = jsonCevap.Replace("```json", "").Replace("```", "").Trim();
 
-                // Deserialize
-                var antrenmanListesi = JsonConvert.DeserializeObject<List<AntrenmanSatiri>>(jsonCevap);
+                // Bazen kök obje farklı gelebilir, GroqManager'da yapılandırdığımız formata göre parse edelim
+                // Not: Yukarıdaki promptta yapıyı { "antrenman":List } şeklinde istedik.
+                // Eğer doğrudan Liste dönerse kod patlayabilir, o yüzden JToken ile kontrol etmek daha güvenlidir.
+                // Ancak basitlik adına senin mevcut yapına uyduruyorum:
 
-                foreach (var satir in antrenmanListesi)
+                List<AntrenmanSatiri> antrenmanListesi = null;
+
+                // Olası JSON formatlarını dene
+                try
                 {
-                    TabloyaIcerikEkle(satir.bolum + " - " + satir.aktivite, satir.detay);
+                    // 1. İhtimal: Doğrudan liste
+                    antrenmanListesi = JsonConvert.DeserializeObject<List<AntrenmanSatiri>>(jsonCevap);
+                }
+                catch
+                {
+                    // 2. İhtimal: Bir obje içinde liste (Promptta belirttiğimiz gibi)
+                    var rootObj = JsonConvert.DeserializeObject<Dictionary<string, List<AntrenmanSatiri>>>(jsonCevap);
+                    if (rootObj != null && rootObj.ContainsKey("antrenman"))
+                    {
+                        antrenmanListesi = rootObj["antrenman"];
+                    }
+                    // Eğer anahtar farklı geldiyse ilk değeri almayı dene
+                    else if (rootObj != null && rootObj.Count > 0)
+                    {
+                        antrenmanListesi = rootObj.Values.First();
+                    }
                 }
 
-                dbManager.AddTrainingLog(secilenGrup, DateTime.Now, toplamMesafe, toplamSure);
+                if (antrenmanListesi != null)
+                {
+                    foreach (var satir in antrenmanListesi)
+                    {
+                        TabloyaIcerikEkle(satir.bolum + " - " + satir.aktivite, satir.detay);
+                    }
 
-                string currentSelected = "";
-                if (cmbGrup.SelectedItem != null) currentSelected = cmbGrup.SelectedItem.ToString();
+                    dbManager.AddTrainingLog(secilenGrup, DateTime.Now, toplamMesafe, toplamSure);
 
-                if (currentSelected == secilenGrup) cmbGrup_SelectedIndexChanged(null, null);
+                    string currentSelected = "";
+                    if (cmbGrup.SelectedItem != null) currentSelected = cmbGrup.SelectedItem.ToString();
+                    if (currentSelected == secilenGrup) cmbGrup_SelectedIndexChanged(null, null);
 
-                MessageBox.Show("Program hazır!", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("Program Groq ile hazırlandı!", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show("JSON formatı çözülemedi:\n" + jsonCevap, "Format Hatası", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
             catch (Exception ex)
             {
@@ -217,12 +318,5 @@ namespace YüzmeAntrenmanıPlanlama
                 btnOlustur.Enabled = true;
             }
         }
-    }
-
-    public class AntrenmanSatiri
-    {
-        public string bolum { get; set; }
-        public string aktivite { get; set; }
-        public string detay { get; set; }
     }
 }

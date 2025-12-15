@@ -1,80 +1,95 @@
-﻿using System.Text;
+﻿using System;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace YüzmeAntrenmanıPlanlama;
-
-public class GeminiManager
+namespace YüzmeAntrenmanıPlanlama
 {
-    // API ANAHTARINI BURAYA YAPIŞTIR (Boşluksuz!)
-    private const string ApiKey = "";
-
-    // Denenecek Modeller Listesi (Sırasıyla dener)
-    private readonly string[] _models = {
-        "gemini-2.0-flash-exp"
-    };
-
-    public async Task<string> AntrenmanProgramiIste(string prompt)
+    public class GeminiManager
     {
-        if (string.IsNullOrEmpty(ApiKey) || ApiKey.Contains("BURAYA"))
-            return "HATA: API Anahtarı girilmemiş! GeminiManager.cs dosyasını düzeltin.";
+        // -------------------------------------------------------------------------
+        // BURAYA GROQ SİTESİNDEN ALDIĞIN 'gsk_' İLE BAŞLAYAN ŞİFREYİ YAPIŞTIR
+        // -------------------------------------------------------------------------
+        private const string ApiKey = "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";
 
-        using var client = new HttpClient();
+        // Groq API Adresi (OpenAI uyumlu format kullanır)
+        private const string ApiUrl = "https://api.groq.com/openai/v1/chat/completions";
 
-        // Her modeli sırayla dene
-        foreach (var model in _models)
+        public async Task<string> AntrenmanProgramiIste(string prompt)
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={ApiKey}";
-
-            var requestBody = new { contents = new[] { new { parts = new[] { new { text = prompt } } } } };
-            var jsonContent = JsonConvert.SerializeObject(requestBody);
-            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-
-            try
+            if (string.IsNullOrEmpty(ApiKey) || ApiKey.Contains("BURAYA"))
             {
-                var response = await client.PostAsync(url, content);
-                var responseString = await response.Content.ReadAsStringAsync();
+                return "HATA: Groq API Anahtarı girilmemiş! Lütfen GeminiManager.cs dosyasını düzenleyin.";
+            }
 
-                // Eğer başarılıysa cevabı döndür ve çık
-                if (response.IsSuccessStatusCode)
+            using (var client = new HttpClient())
+            {
+                // Yetkilendirme Başlığı
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {ApiKey}");
+
+                // Groq İstek Gövdesi
+                // Model olarak "llama3-8b-8192" kullanıyoruz. Çok hızlıdır.
+                var requestBody = new
                 {
-                    return CevabiTemizle(responseString);
-                }
+                    model = "llama-3.3-70b-versatile",
+                    messages = new[]
+                    {
+                        new { role = "user", content = prompt }
+                    },
+                    temperature = 0.5 // 0'a yakın olması daha tutarlı JSON verir
+                };
 
-                // 429 (Kota Dolu) hatasıysa diğer modele geçme, beklemesi lazım.
-                if ((int)response.StatusCode == 429)
+                var jsonContent = JsonConvert.SerializeObject(requestBody);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                try
                 {
-                    return "HATA: Çok hızlı istek gönderildi (Kota Dolu). Lütfen 1 dakika bekleyip tekrar deneyin.";
+                    var response = await client.PostAsync(ApiUrl, content);
+                    var responseString = await response.Content.ReadAsStringAsync();
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        return $"HATA: Groq Bağlantı Hatası ({response.StatusCode}).\nDetay: {responseString}";
+                    }
+
+                    try
+                    {
+                        JObject jsonResponse = JObject.Parse(responseString);
+
+                        // Groq/OpenAI cevap formatı: choices -> 0 -> message -> content
+                        var text = jsonResponse["choices"]?[0]?["message"]?["content"]?.ToString();
+
+                        if (!string.IsNullOrEmpty(text))
+                        {
+                            // Yapay zeka bazen "İşte JSON:" diye lafa başlar, bunları temizleyelim.
+                            text = text.Replace("```json", "").Replace("```", "").Trim();
+
+                            // Bazen en sonda açıklama yapabilir, sadece [ ile ] arasını almaya çalışalım
+                            int firstBracket = text.IndexOf('[');
+                            int lastBracket = text.LastIndexOf(']');
+
+                            if (firstBracket != -1 && lastBracket != -1)
+                            {
+                                text = text.Substring(firstBracket, lastBracket - firstBracket + 1);
+                            }
+
+                            return text;
+                        }
+
+                        return "HATA: Groq boş cevap döndürdü.";
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"HATA: Cevap okunamadı. Veri: {responseString}\nHata: {ex.Message}";
+                    }
                 }
-
-                // 404 (Model Bulunamadı) hatasıysa bir sonraki modeli dene (Döngü devam eder)
-                // Diğer hatalar için de döngüye devam etsin.
+                catch (Exception ex)
+                {
+                    return $"HATA: İnternet bağlantı sorunu: {ex.Message}";
+                }
             }
-            catch
-            {
-                // Bağlantı hatası varsa diğer modele geç
-            }
-        }
-
-        return "HATA: Hiçbir yapay zeka modeline ulaşılamadı. API Anahtarınızı veya internet bağlantınızı kontrol edin.";
-    }
-
-    private string CevabiTemizle(string jsonVeri)
-    {
-        try
-        {
-            var jsonResponse = JObject.Parse(jsonVeri);
-            var text = jsonResponse["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
-
-            if (!string.IsNullOrEmpty(text))
-            {
-                return text.Replace("```json", "").Replace("```", "").Trim();
-            }
-            return "HATA: Yapay zeka boş cevap döndürdü.";
-        }
-        catch (Exception ex)
-        {
-            return $"HATA: Cevap okunamadı. {ex.Message}";
         }
     }
 }

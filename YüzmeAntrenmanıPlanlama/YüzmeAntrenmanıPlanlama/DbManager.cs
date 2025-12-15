@@ -14,20 +14,21 @@ namespace YüzmeAntrenmanıPlanlama
 
         public DbManager()
         {
+            // .NET Framework (VS 2017) için doğru dosya yolu
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
             _dbFullPath = Path.Combine(baseDirectory, DbFileName);
-            // Pooling=True performans için önemlidir.
-            _connectionString = $"Data Source={_dbFullPath};Version=3;Pooling=True;";
+
+            // Standart SQLite bağlantı cümlesi
+            _connectionString = "Data Source=" + _dbFullPath + ";Version=3;";
+
             InitializeDatabase();
         }
 
-        // Veritabanı bağlantısı oluşturur.
         private SQLiteConnection GetConnection()
         {
             return new SQLiteConnection(_connectionString);
         }
 
-        // Veritabanı dosyası ve tabloları yoksa oluşturur.
         private void InitializeDatabase()
         {
             try
@@ -41,7 +42,7 @@ namespace YüzmeAntrenmanıPlanlama
                 {
                     connection.Open();
 
-                    // 1. Sporcular Tablosu
+                    // Tablo 1: Sporcular
                     string sqlSporcular = @"
                         CREATE TABLE IF NOT EXISTS Sporcular (
                             Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +55,7 @@ namespace YüzmeAntrenmanıPlanlama
                         command.ExecuteNonQuery();
                     }
 
-                    // 2. Antrenman Geçmişi Tablosu
+                    // Tablo 2: Antrenman Geçmişi
                     string sqlGecmis = @"
                         CREATE TABLE IF NOT EXISTS AntrenmanGecmisi (
                             Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,13 +72,10 @@ namespace YüzmeAntrenmanıPlanlama
             }
             catch (Exception ex)
             {
-                throw new Exception($"Veritabanı başlatma hatası: {ex.Message}", ex);
+                throw new Exception("Veritabanı başlatma hatası: " + ex.Message, ex);
             }
         }
 
-        // --- SPORCU İŞLEMLERİ ---
-
-        // Veritabanındaki tüm sporcuları "Ad Soyad (Grup)" formatında listeler.
         public List<string> GetFormattedStudentList()
         {
             var list = new List<string>();
@@ -87,6 +85,7 @@ namespace YüzmeAntrenmanıPlanlama
                 {
                     connection.Open();
                     string sql = "SELECT Ad, Soyad, Grup FROM Sporcular ORDER BY Grup ASC, Ad ASC";
+
                     using (var command = new SQLiteCommand(sql, connection))
                     using (var reader = command.ExecuteReader())
                     {
@@ -95,16 +94,15 @@ namespace YüzmeAntrenmanıPlanlama
                             string ad = reader["Ad"] != DBNull.Value ? reader["Ad"].ToString() : "";
                             string soyad = reader["Soyad"] != DBNull.Value ? reader["Soyad"].ToString() : "";
                             string grup = reader["Grup"] != DBNull.Value ? reader["Grup"].ToString() : "";
-                            list.Add($"{ad} {soyad} ({grup})");
+                            list.Add(ad + " " + soyad + " (" + grup + ")");
                         }
                     }
                 }
             }
-            catch (Exception ex) { throw new Exception($"Sporcu listesi hatası: {ex.Message}"); }
+            catch (Exception ex) { throw new Exception("Sporcu listesi hatası: " + ex.Message); }
             return list;
         }
 
-        // Yeni sporcu ekler.
         public void AddStudent(string ad, string soyad, string grup)
         {
             try
@@ -122,10 +120,9 @@ namespace YüzmeAntrenmanıPlanlama
                     }
                 }
             }
-            catch (Exception ex) { throw new Exception($"Sporcu ekleme hatası: {ex.Message}"); }
+            catch (Exception ex) { throw new Exception("Sporcu ekleme hatası: " + ex.Message); }
         }
 
-        // Belirtilen sporcuyu siler.
         public void DeleteStudent(string ad, string soyad, string grup)
         {
             try
@@ -143,10 +140,9 @@ namespace YüzmeAntrenmanıPlanlama
                     }
                 }
             }
-            catch (Exception ex) { throw new Exception($"Sporcu silme hatası: {ex.Message}"); }
+            catch (Exception ex) { throw new Exception("Sporcu silme hatası: " + ex.Message); }
         }
 
-        // Belirtilen gruptaki tüm sporcuları siler.
         public void DeleteAllInGroup(string grupAdi)
         {
             try
@@ -162,10 +158,9 @@ namespace YüzmeAntrenmanıPlanlama
                     }
                 }
             }
-            catch (Exception ex) { throw new Exception($"Grup silme hatası: {ex.Message}"); }
+            catch (Exception ex) { throw new Exception("Grup silme hatası: " + ex.Message); }
         }
 
-        // Bir grupta öğrenci olup olmadığını kontrol eder.
         public bool IsGroupHasStudents(string grupAdi)
         {
             try
@@ -183,12 +178,9 @@ namespace YüzmeAntrenmanıPlanlama
                     }
                 }
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Grup kontrol hatası: {ex.Message}"); return false; }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine("Grup kontrol hatası: " + ex.Message); return false; }
         }
 
-        // --- ANTRENMAN GEÇMİŞİ İŞLEMLERİ ---
-
-        // Oluşturulan antrenmanı veritabanına kaydeder.
         public void AddTrainingLog(string grup, DateTime tarih, int mesafe, int sure)
         {
             try
@@ -199,7 +191,6 @@ namespace YüzmeAntrenmanıPlanlama
                     string sql = "INSERT INTO AntrenmanGecmisi (Tarih, Grup, ToplamMesafe, ToplamSure) VALUES (@tarih, @grup, @mesafe, @sure)";
                     using (var command = new SQLiteCommand(sql, connection))
                     {
-                        // Tarihi YYYY-MM-DD HH:MM:SS formatında kaydediyoruz.
                         command.Parameters.AddWithValue("@tarih", tarih.ToString("yyyy-MM-dd HH:mm:ss"));
                         command.Parameters.AddWithValue("@grup", grup);
                         command.Parameters.AddWithValue("@mesafe", mesafe);
@@ -210,11 +201,10 @@ namespace YüzmeAntrenmanıPlanlama
             }
             catch (Exception ex)
             {
-                throw new Exception($"Antrenman kaydetme hatası: {ex.Message}");
+                throw new Exception("Antrenman kaydetme hatası: " + ex.Message);
             }
         }
 
-        // Belirtilen gruba ait antrenman geçmişini DataGridView için uygun formatta döndürür.
         public DataTable GetTrainingHistoryByGroup(string grup)
         {
             DataTable dt = new DataTable();
@@ -223,8 +213,6 @@ namespace YüzmeAntrenmanıPlanlama
                 using (var connection = GetConnection())
                 {
                     connection.Open();
-                    // Tarihi gün.ay.yıl formatına çevirir ve ortalama hızı hesaplar.
-                    // Sıfıra bölünme hatasını önlemek için CASE kullanılır.
                     string sql = @"
                         SELECT 
                             strftime('%d.%m.%Y', Tarih) AS TarihFormatted, 
@@ -249,7 +237,7 @@ namespace YüzmeAntrenmanıPlanlama
             }
             catch (Exception ex)
             {
-                throw new Exception($"Geçmiş antrenmanlar çekilirken hata: {ex.Message}");
+                throw new Exception("Geçmiş antrenmanlar çekilirken hata: " + ex.Message);
             }
             return dt;
         }
