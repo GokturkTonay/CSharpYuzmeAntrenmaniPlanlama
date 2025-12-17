@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using DevExpress.UserSkins;
+using DevExpress.Skins;
+using DevExpress.LookAndFeel;
 
 namespace YüzmeAntrenmanıPlanlama
 {
@@ -16,6 +19,7 @@ namespace YüzmeAntrenmanıPlanlama
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            UserLookAndFeel.Default.SetSkinStyle(SkinStyle.WXI, SkinSvgPalette.WXI.Darkness);
             Application.Run(new Form1());
         }
     }

@@ -6,317 +6,400 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Newtonsoft.Json;
+using DevExpress.XtraEditors;
+using DevExpress.XtraBars.Navigation;
+using DevExpress.XtraGrid;
+using DevExpress.XtraGrid.Views.Grid;
 
 namespace YüzmeAntrenmanıPlanlama
 {
-    // JSON Deserialize işlemi için yardımcı sınıf
+    // Veri Modeli (JSON ile uyumlu olması için Attribute ekledik)
     public class AntrenmanSatiri
     {
-        public string bolum { get; set; }
-        public string aktivite { get; set; }
-        public string detay { get; set; }
+        [JsonProperty("bolum")]
+        public string Bolum { get; set; }
+
+        [JsonProperty("aktivite")]
+        public string Aktivite { get; set; }
+
+        [JsonProperty("detay")]
+        public string Detay { get; set; }
     }
 
-    public partial class Form1 : Form
+    public partial class Form1 : DevExpress.XtraEditors.XtraForm
     {
-        private Button[] biyomotorikButtons;
-        private Button[] yuzmeStiliButtons;
+        // Yöneticiler
         private DbManager dbManager = new DbManager();
-        private List<string> currentDbList = new List<string>();
+        private PdfManager pdfManager = new PdfManager();
         private readonly string[] initialGroups = { "A Grubu", "B Grubu", "C Grubu" };
+
+        // Grid'e bağlayacağımız liste (BindingList ekranda anlık güncelleme sağlar)
+        private System.ComponentModel.BindingList<AntrenmanSatiri> programListesi;
 
         public Form1()
         {
             InitializeComponent();
 
+            // Grid Bağlantısı
+            programListesi = new System.ComponentModel.BindingList<AntrenmanSatiri>();
+            gcProgram.DataSource = programListesi;
+
+            InitializeGroups();
+            SetupEvents();
+        }
+
+        private void SetupEvents()
+        {
+            // Combobox Eventleri
+            this.cmbGrup.Properties.TextEditStyle = DevExpress.XtraEditors.Controls.TextEditStyles.DisableTextEditor;
             this.cmbGrup.SelectedIndexChanged += new EventHandler(this.cmbGrup_SelectedIndexChanged);
+
+            // "Yeni Grup Oluştur..." seçilirse input alanını göster/gizle
+            this.cmbGrup.SelectedIndexChanged += (s, e) => {
+                bool isNew = cmbGrup.Text == "Yeni Grup Oluştur...";
+                txtGrupInput.Visible = isNew;
+            };
+
+            // Buton Eventleri
             this.btnOlustur.Click += new EventHandler(this.BtnOlustur_Click);
             this.btnEkleOgrenci.Click += new EventHandler(this.BtnEkleOgrenci_Click);
             this.btnSilOgrenci.Click += new EventHandler(this.BtnSilOgrenci_Click);
             this.btnSilGrup.Click += new EventHandler(this.BtnSilGrup_Click);
 
-            this.profilToolStripMenuItem.Click += new EventHandler(this.ProfilToolStripMenuItem_Click);
-            this.antrenmanOlusturToolStripMenuItem.Click += new EventHandler(this.AntrenmanOlusturToolStripMenuItem_Click);
+            // PDF ve Silme İşlemleri
+            this.btnPdfIndir.Click += (s, e) => ExportGrid(gcProgram, "Antrenman");
+            this.btnPDFOlarakIndirProfil.Click += (s, e) => ExportGrid(gcGecmis, "Gecmis");
+            this.btnSeciliyiIndir.Click += new EventHandler(this.BtnSeciliyiIndir_Click);
+            this.btnGecmisSil.Click += new EventHandler(this.BtnGecmisSil_Click);
 
-            ConfigureInteractiveButtons();
-
-            foreach (string grup in initialGroups)
-            {
-                if (!this.cmbGrup.Items.Contains(grup))
-                    this.cmbGrup.Items.Add(grup);
-                if (!this.cmbAntrenmanGrup.Items.Contains(grup))
-                    this.cmbAntrenmanGrup.Items.Add(grup);
-            }
-
-            if (!this.cmbGrup.Items.Contains("Yeni Grup Oluştur..."))
-                this.cmbGrup.Items.Add("Yeni Grup Oluştur...");
-
-            if (this.cmbGrup.Items.Count > 0) { this.cmbGrup.SelectedIndex = 0; }
-            if (this.cmbAntrenmanGrup.Items.Count > 0) { this.cmbAntrenmanGrup.SelectedIndex = 0; }
+            // Geçmiş Grid Çift Tıklama
+            this.gvGecmis.DoubleClick += GvGecmis_DoubleClick;
         }
 
-        private void ProfilToolStripMenuItem_Click(object sender, EventArgs e) { tabControl1.SelectedTab = tabPageProfil; }
-        private void AntrenmanOlusturToolStripMenuItem_Click(object sender, EventArgs e) { tabControl1.SelectedTab = tabPageAntrenmanOlustur; }
+        private void InitializeGroups()
+        {
+            foreach (string grup in initialGroups)
+            {
+                if (!this.cmbGrup.Properties.Items.Contains(grup)) this.cmbGrup.Properties.Items.Add(grup);
+                if (!this.cmbAntrenmanGrup.Properties.Items.Contains(grup)) this.cmbAntrenmanGrup.Properties.Items.Add(grup);
+            }
+            this.cmbGrup.Properties.Items.Add("Yeni Grup Oluştur...");
+            this.cmbGrup.SelectedIndex = 0;
+            this.cmbAntrenmanGrup.SelectedIndex = 0;
+        }
 
+        // --- BUTTON MANTIĞI ---
+        private string GetBiyomotor()
+        {
+            if (btnDayaniklilik.Checked) return "Dayanıklılık";
+            if (btnSurat.Checked) return "Sürat";
+            if (btnKuvvet.Checked) return "Kuvvet";
+            if (btnEsneklik.Checked) return "Esneklik";
+            if (btnKoordinasyon.Checked) return "Koordinasyon";
+            return "Dayanıklılık"; // Varsayılan
+        }
+
+        private string GetSecilenStiller()
+        {
+            List<string> stiller = new List<string>();
+            if (btnSerbest.Checked) stiller.Add("Serbest");
+            if (btnSirtustu.Checked) stiller.Add("Sırtüstü");
+            if (btnKurbagalama.Checked) stiller.Add("Kurbağa");
+            if (btnKelebek.Checked) stiller.Add("Kelebek");
+
+            return stiller.Count > 0 ? string.Join(", ", stiller) : "Karışık";
+        }
+
+        // --- ACCORDION (LİSTE) YÖNETİMİ ---
         private void OgrenciListesiniGuncelle()
         {
-            string selectedGroup = "";
-            if (this.cmbGrup.SelectedItem != null) selectedGroup = this.cmbGrup.SelectedItem.ToString();
+            aceMainGroup.Elements.Clear(); // Listeyi temizle
+            string selectedGroup = cmbGrup.Text;
 
-            if (string.IsNullOrEmpty(selectedGroup) || selectedGroup == "Yeni Grup Oluştur...") { this.lstOgrenciListesi.Items.Clear(); return; }
+            if (selectedGroup == "Yeni Grup Oluştur..." || string.IsNullOrEmpty(selectedGroup)) return;
 
-            currentDbList = dbManager.GetFormattedStudentList();
-            this.lstOgrenciListesi.BeginUpdate();
-            this.lstOgrenciListesi.Items.Clear();
-            foreach (string ogrenciFormatli in currentDbList)
+            var list = dbManager.GetFormattedStudentList();
+            foreach (var item in list)
             {
-                if (ogrenciFormatli.Contains("(" + selectedGroup + ")"))
-                    this.lstOgrenciListesi.Items.Add(ogrenciFormatli);
+                if (item.Contains($"({selectedGroup})"))
+                {
+                    // Accordion Elemanı Ekle
+                    AccordionControlElement el = new AccordionControlElement(ElementStyle.Item);
+                    el.Text = item; // Örn: "Ahmet Yılmaz (A Grubu)"
+                    aceMainGroup.Elements.Add(el);
+                }
             }
-            this.lstOgrenciListesi.EndUpdate();
         }
 
         private void cmbGrup_SelectedIndexChanged(object sender, EventArgs e)
         {
-            string selectedGroup = "";
-            if (this.cmbGrup.SelectedItem != null) selectedGroup = this.cmbGrup.SelectedItem.ToString();
-
-            bool showInput = selectedGroup == "Yeni Grup Oluştur...";
-            this.lblGrupInput.Visible = showInput; this.txtGrupInput.Visible = showInput;
-
-            if (!showInput && !string.IsNullOrEmpty(selectedGroup))
+            string selectedGroup = cmbGrup.Text;
+            if (selectedGroup != "Yeni Grup Oluştur...")
             {
                 OgrenciListesiniGuncelle();
                 try
                 {
-                    DataTable dtHistory = dbManager.GetTrainingHistoryByGroup(selectedGroup);
-                    dgvGecmisAntrenmanlarProfil.DataSource = dtHistory;
+                    DataTable dt = dbManager.GetTrainingHistoryByGroup(selectedGroup);
+                    gcGecmis.DataSource = dt;
+
+                    // Grid Sütunlarını Gizle
+                    var view = gvGecmis;
+                    if (view.Columns["Id"] != null) view.Columns["Id"].Visible = false;
+                    if (view.Columns["Icerik"] != null) view.Columns["Icerik"].Visible = false;
+                    if (view.Columns["Tarih"] != null) view.Columns["Tarih"].Visible = false;
+
+                    // TarihFormatted sütunu varsa başlığını düzelt
+                    if (view.Columns["TarihFormatted"] != null)
+                    {
+                        view.Columns["TarihFormatted"].Caption = "Tarih";
+                        view.Columns["TarihFormatted"].VisibleIndex = 0;
+                    }
                 }
-                catch (Exception ex) { MessageBox.Show("Hata: " + ex.Message); }
+                catch (Exception ex) { XtraMessageBox.Show(ex.Message); }
             }
             else
             {
-                dgvGecmisAntrenmanlarProfil.DataSource = null;
-                lstOgrenciListesi.Items.Clear();
+                gcGecmis.DataSource = null;
+                aceMainGroup.Elements.Clear();
             }
         }
 
-        private void BtnEkleOgrenci_Click(object sender, EventArgs e)
-        {
-            string ad = cmbAd.Text.Trim(); string soyad = cmbSoyad.Text.Trim();
-            string secilenGrup = "";
-            if (cmbGrup.SelectedItem != null) secilenGrup = cmbGrup.SelectedItem.ToString();
-            string yeniGrupAdi = txtGrupInput.Text.Trim(); string hedefGrup = "";
-
-            if (secilenGrup == "Yeni Grup Oluştur...")
-            {
-                if (string.IsNullOrEmpty(yeniGrupAdi)) { MessageBox.Show("Grup adı girin."); return; }
-                hedefGrup = yeniGrupAdi;
-                if (!cmbGrup.Items.Contains(hedefGrup)) { cmbGrup.Items.Insert(cmbGrup.Items.Count - 1, hedefGrup); cmbAntrenmanGrup.Items.Add(hedefGrup); }
-            }
-            else { hedefGrup = secilenGrup; }
-
-            if (string.IsNullOrEmpty(ad) || string.IsNullOrEmpty(soyad)) { MessageBox.Show("Ad Soyad girin."); return; }
-            try { dbManager.AddStudent(ad, soyad, hedefGrup); } catch (Exception ex) { MessageBox.Show(ex.Message); return; }
-
-            if (secilenGrup == "Yeni Grup Oluştur...") { cmbGrup.SelectedItem = hedefGrup; txtGrupInput.Clear(); } else { OgrenciListesiniGuncelle(); }
-            cmbAd.Text = ""; cmbSoyad.Text = "";
-        }
-
-        private void BtnSilOgrenci_Click(object sender, EventArgs e)
-        {
-            if (lstOgrenciListesi.SelectedIndex == -1) return;
-            string selectedString = lstOgrenciListesi.SelectedItem.ToString();
-            if (MessageBox.Show("Silinsin mi?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
-            {
-                try
-                {
-                    int idx = selectedString.LastIndexOf('(');
-                    string grp = selectedString.Substring(idx + 1).Replace(")", "");
-                    string name = selectedString.Substring(0, idx).Trim();
-                    var parts = name.Split(' ');
-                    string sn = parts.Last();
-                    string n = string.Join(" ", parts.Take(parts.Length - 1));
-                    dbManager.DeleteStudent(n, sn, grp);
-                    OgrenciListesiniGuncelle();
-                }
-                catch (Exception ex) { MessageBox.Show(ex.Message); }
-            }
-        }
-
-        private void BtnSilGrup_Click(object sender, EventArgs e)
-        {
-            string g = "";
-            if (this.cmbGrup.SelectedItem != null) g = this.cmbGrup.SelectedItem.ToString();
-            if (string.IsNullOrEmpty(g) || g == "Yeni Grup Oluştur...") return;
-            if (MessageBox.Show("Grup silinsin mi?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
-            {
-                dbManager.DeleteAllInGroup(g);
-                this.cmbGrup.Items.Remove(g);
-                this.cmbAntrenmanGrup.Items.Remove(g);
-                if (this.cmbGrup.Items.Count > 1) this.cmbGrup.SelectedIndex = 0; else this.cmbGrup.SelectedIndex = -1;
-                if (this.cmbAntrenmanGrup.Items.Count > 0) this.cmbAntrenmanGrup.SelectedIndex = 0; else this.cmbAntrenmanGrup.SelectedIndex = -1;
-            }
-        }
-
-        private void ConfigureInteractiveButtons()
-        {
-            this.biyomotorikButtons = new Button[] { this.btnDayaniklilik, btnSurat, btnKuvvet, btnEsneklik, btnKoordinasyon };
-            this.yuzmeStiliButtons = new Button[] { this.btnSerbest, btnSirtustu, btnKurbagalama, btnKelebek };
-            SetupGroupButtons(this.biyomotorikButtons);
-            SetupGroupButtons(this.yuzmeStiliButtons);
-        }
-
-        private void SetupGroupButtons(Button[] group)
-        {
-            if (group == null) return;
-            foreach (var btn in group)
-            {
-                if (btn == null) continue;
-                btn.Click -= GroupButton_Click;
-                btn.Click += GroupButton_Click;
-            }
-        }
-
-        private void GroupButton_Click(object sender, EventArgs e)
-        {
-            Button b = sender as Button;
-            if (b == null) return;
-            if (Array.Exists(this.biyomotorikButtons, x => ReferenceEquals(x, b))) SetSelectedButton(b, this.biyomotorikButtons);
-            if (Array.Exists(this.yuzmeStiliButtons, x => ReferenceEquals(x, b))) SetSelectedButton(b, this.yuzmeStiliButtons);
-        }
-
-        private void SetSelectedButton(Button c, Button[] g)
-        {
-            foreach (var b in g)
-            {
-                b.FlatAppearance.BorderColor = Color.Gray;
-                b.BackColor = SystemColors.Control;
-            }
-            c.FlatAppearance.BorderColor = Color.DodgerBlue;
-            c.BackColor = Color.FromArgb(230, 245, 255);
-        }
-
-        private string GetSelectedButtonText(Button[] g)
-        {
-            foreach (var b in g) { if (b.BackColor == Color.FromArgb(230, 245, 255)) return b.Text; }
-            return null;
-        }
-
-        private void TabloyaIcerikEkle(string aktivite, string detay)
-        {
-            int i = dgvProgram.Rows.Add(aktivite + ": " + detay);
-            dgvProgram.Rows[i].DefaultCellStyle.WrapMode = DataGridViewTriState.True;
-        }
-
-        // --- DEĞİŞİKLİK BURADA BAŞLIYOR ---
+        // --- ANTRENMAN OLUŞTURMA ---
         private async void BtnOlustur_Click(object sender, EventArgs e)
         {
-            string secilenGrup = "";
-            if (cmbAntrenmanGrup.SelectedItem != null) secilenGrup = cmbAntrenmanGrup.SelectedItem.ToString();
+            string secilenGrup = cmbAntrenmanGrup.Text;
+            int sure = (int)nudToplamSure.Value;
+            int mesafe = (int)nudToplamMesafe.Value;
+            string ekipman = chkEkipman.Checked ? "Var" : "Yok";
 
-            if (string.IsNullOrEmpty(secilenGrup)) { MessageBox.Show("Grup seçin."); return; }
-            int toplamMesafe = (int)nudToplamMesafe.Value;
-            int toplamSure = (int)nudToplamSure.Value;
-            bool ekipmanVarMi = chkEkEkipman.Checked;
-            if (toplamMesafe <= 0 || toplamSure <= 0) { MessageBox.Show("Mesafe ve süre girin."); return; }
+            string stil = GetSecilenStiller();
+            string odak = GetBiyomotor();
 
-            string secilenBiyomotor = GetSelectedButtonText(biyomotorikButtons);
-            if (secilenBiyomotor == null) secilenBiyomotor = "Dayanıklılık";
-
-            string secilenStil = GetSelectedButtonText(yuzmeStiliButtons);
-            if (secilenStil == null) secilenStil = "Karışık";
-
-            string ekipmanDurumu = ekipmanVarMi ? "Palet, şnorkel var." : "Ekipman yok.";
-
-            string eskiButonMetni = btnOlustur.Text;
-            btnOlustur.Text = "Groq Hazırlıyor..."; // Kullanıcıya Groq'un çalıştığını gösterelim
+            string eskiText = btnOlustur.Text;
+            btnOlustur.Text = "Yapay Zeka Çalışıyor...";
             btnOlustur.Enabled = false;
-            dgvProgram.Rows.Clear();
 
             try
             {
-                // Prompt'u Groq Llama modellerine uygun hale getirelim
-                string prompt = "Sen uzman bir yüzme antrenörüsün. Aşağıdaki bilgilere göre yapılandırılmış bir antrenman programı oluştur.\n" +
-                    "Hedef Grup: " + secilenGrup + "\n" +
-                    "Odak: " + secilenBiyomotor + "\n" +
-                    "Stil: " + secilenStil + "\n" +
-                    "Toplam Mesafe: " + toplamMesafe + "m\n" +
-                    "Ekipman Durumu: " + ekipmanDurumu + "\n\n" +
-                    "ÖNEMLİ: Çıktıyı SADECE aşağıdaki JSON formatında ver. Başka hiçbir metin, açıklama veya markdown bloğu (```json gibi) ekleme.\n" +
-                    "JSON Formatı:\n" +
-                    "{ \"antrenman\": [ { \"bolum\": \"ISINMA\", \"aktivite\": \"200m Serbest\", \"detay\": \"Rahat tempo\" }, ... ] }";
+                // Geçmiş Özetini Al
+                string gecmisOzet = "İlk Antrenman";
+                try
+                {
+                    DataTable dt = dbManager.GetTrainingHistoryByGroup(secilenGrup);
+                    if (dt.Rows.Count > 0) gecmisOzet = "Önceki antrenmanlar mevcut.";
+                }
+                catch { }
 
-                // GeminiManager yerine GroqManager kullanıyoruz
+                string prompt = $@"Sen uzman bir yüzme antrenörüsün.
+                Grup: {secilenGrup} | Geçmiş: {gecmisOzet}
+                Hedef: {odak} | Stil: {stil} | Mesafe: {mesafe}m | Ekipman: {ekipman}
+                
+                KURALLAR: 
+                1. Setleri parçala (Örn: '4x50m Serbest' ayrı satır).
+                2. Detay kısmına sadece teknik veri yaz (Tempo: A1, Dinlenme: 15sn).
+                
+                ÇIKTI (JSON):
+                {{ ""antrenman"": [ {{ ""bolum"": ""ANA SET"", ""aktivite"": ""..."", ""detay"": ""..."" }} ] }}";
+
                 GeminiManager aiManager = new GeminiManager();
                 string jsonCevap = await aiManager.AntrenmanProgramiIste(prompt);
 
                 if (jsonCevap.StartsWith("HATA:"))
                 {
-                    MessageBox.Show(jsonCevap, "Groq Bağlantı Sorunu", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    XtraMessageBox.Show(jsonCevap, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                // Groq bazen markdown ekleyebilir, temizleyelim
                 jsonCevap = jsonCevap.Replace("```json", "").Replace("```", "").Trim();
-
-                // Bazen kök obje farklı gelebilir, GroqManager'da yapılandırdığımız formata göre parse edelim
-                // Not: Yukarıdaki promptta yapıyı { "antrenman":List } şeklinde istedik.
-                // Eğer doğrudan Liste dönerse kod patlayabilir, o yüzden JToken ile kontrol etmek daha güvenlidir.
-                // Ancak basitlik adına senin mevcut yapına uyduruyorum:
 
                 List<AntrenmanSatiri> antrenmanListesi = null;
 
-                // Olası JSON formatlarını dene
                 try
                 {
-                    // 1. İhtimal: Doğrudan liste
+                    // 1. Doğrudan Liste mi?
                     antrenmanListesi = JsonConvert.DeserializeObject<List<AntrenmanSatiri>>(jsonCevap);
                 }
                 catch
                 {
-                    // 2. İhtimal: Bir obje içinde liste (Promptta belirttiğimiz gibi)
+                    // 2. Obje içinde mi?
                     var rootObj = JsonConvert.DeserializeObject<Dictionary<string, List<AntrenmanSatiri>>>(jsonCevap);
-                    if (rootObj != null && rootObj.ContainsKey("antrenman"))
-                    {
-                        antrenmanListesi = rootObj["antrenman"];
-                    }
-                    // Eğer anahtar farklı geldiyse ilk değeri almayı dene
-                    else if (rootObj != null && rootObj.Count > 0)
-                    {
-                        antrenmanListesi = rootObj.Values.First();
-                    }
+                    if (rootObj != null && rootObj.Values.Count > 0) antrenmanListesi = rootObj.Values.First();
                 }
 
                 if (antrenmanListesi != null)
                 {
+                    programListesi.Clear(); // BindingList'i temizle
                     foreach (var satir in antrenmanListesi)
                     {
-                        TabloyaIcerikEkle(satir.bolum + " - " + satir.aktivite, satir.detay);
+                        // BindingList'e ekle (Grid otomatik güncellenir)
+                        programListesi.Add(satir);
                     }
 
-                    dbManager.AddTrainingLog(secilenGrup, DateTime.Now, toplamMesafe, toplamSure);
+                    dbManager.AddTrainingLog(secilenGrup, DateTime.Now, mesafe, sure, jsonCevap);
 
-                    string currentSelected = "";
-                    if (cmbGrup.SelectedItem != null) currentSelected = cmbGrup.SelectedItem.ToString();
-                    if (currentSelected == secilenGrup) cmbGrup_SelectedIndexChanged(null, null);
+                    // Eğer şu an o grup seçiliyse geçmiş listesini yenile
+                    if (cmbGrup.Text == secilenGrup) cmbGrup_SelectedIndexChanged(null, null);
 
-                    MessageBox.Show("Program Groq ile hazırlandı!", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    XtraMessageBox.Show("Program oluşturuldu ve kaydedildi.", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
-                else
+            }
+            catch (Exception ex) { XtraMessageBox.Show("Hata: " + ex.Message); }
+            finally { btnOlustur.Text = eskiText; btnOlustur.Enabled = true; }
+        }
+
+        // --- GEÇMİŞ DETAY (ÇİFT TIKLAMA) ---
+        private void GvGecmis_DoubleClick(object sender, EventArgs e)
+        {
+            var view = sender as GridView;
+            if (view.FocusedRowHandle < 0) return;
+
+            object val = view.GetFocusedRowCellValue("Icerik");
+            if (val == null) return;
+            string json = val.ToString();
+
+            if (string.IsNullOrEmpty(json)) return;
+
+            try
+            {
+                var list = JsonConvert.DeserializeObject<List<AntrenmanSatiri>>(json);
+                if (list == null) // Format farklıysa dictionary dene
                 {
-                    MessageBox.Show("JSON formatı çözülemedi:\n" + jsonCevap, "Format Hatası", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    var rootObj = JsonConvert.DeserializeObject<Dictionary<string, List<AntrenmanSatiri>>>(json);
+                    if (rootObj != null && rootObj.Values.Count > 0) list = rootObj.Values.First();
+                }
+
+                if (list != null)
+                {
+                    programListesi.Clear();
+                    foreach (var item in list) programListesi.Add(item);
+                    tabControl1.SelectedTabPage = tabPageAntrenmanOlustur; // Sekmeyi değiştir
                 }
             }
-            catch (Exception ex)
+            catch { XtraMessageBox.Show("Geçmiş veri formatı okunamadı."); }
+        }
+
+        // --- PDF İŞLEMLERİ ---
+        private void ExportGrid(GridControl grid, string name)
+        {
+            string path = $"{name}_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+            // Grid'in içinde veri var mı kontrol et
+            if (grid.MainView is GridView view && view.RowCount > 0)
             {
-                MessageBox.Show("Hata oluştu:\n" + ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                grid.ExportToPdf(path);
+                if (XtraMessageBox.Show("PDF oluşturuldu. Açmak ister misiniz?", "Başarılı", MessageBoxButtons.YesNo) == DialogResult.Yes)
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo() { FileName = path, UseShellExecute = true });
             }
-            finally
+            else
             {
-                btnOlustur.Text = eskiButonMetni;
-                btnOlustur.Enabled = true;
+                XtraMessageBox.Show("Dışa aktarılacak veri yok.");
             }
+        }
+
+        // --- ÖĞRENCİ EKLEME/SİLME ---
+        private void BtnEkleOgrenci_Click(object sender, EventArgs e)
+        {
+            string ad = txtAd.Text;
+            string soyad = txtSoyad.Text;
+            string grup = cmbGrup.Text == "Yeni Grup Oluştur..." ? txtGrupInput.Text : cmbGrup.Text;
+
+            if (string.IsNullOrEmpty(ad) || string.IsNullOrEmpty(soyad))
+            {
+                XtraMessageBox.Show("Ad ve Soyad girmelisiniz.");
+                return;
+            }
+
+            dbManager.AddStudent(ad, soyad, grup);
+
+            // Eğer yeni grupsa listeye ekle
+            if (!cmbGrup.Properties.Items.Contains(grup))
+            {
+                cmbGrup.Properties.Items.Insert(cmbGrup.Properties.Items.Count - 1, grup);
+                cmbAntrenmanGrup.Properties.Items.Add(grup);
+            }
+
+            if (cmbGrup.Text == "Yeni Grup Oluştur...")
+            {
+                cmbGrup.SelectedItem = grup;
+            }
+            else
+            {
+                OgrenciListesiniGuncelle();
+            }
+
+            txtAd.Text = ""; txtSoyad.Text = "";
+            XtraMessageBox.Show("Öğrenci eklendi.");
+        }
+
+        private void BtnSilOgrenci_Click(object sender, EventArgs e)
+        {
+            // Accordion'da seçili elemanı bul
+            var selected = accordionOgrenciler.SelectedElement;
+            if (selected == null || selected.Style == ElementStyle.Group)
+            {
+                XtraMessageBox.Show("Lütfen silinecek öğrenciyi listeden seçin.");
+                return;
+            }
+
+            string fullText = selected.Text; // "Ahmet Yılmaz (A Grubu)"
+            if (XtraMessageBox.Show($"{fullText} silinsin mi?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            {
+                try
+                {
+                    // İsmi parse et
+                    int idx = fullText.LastIndexOf('(');
+                    string grp = fullText.Substring(idx + 1).Replace(")", "");
+                    string namePart = fullText.Substring(0, idx).Trim();
+                    var parts = namePart.Split(' ');
+                    string soyad = parts.Last();
+                    string ad = string.Join(" ", parts.Take(parts.Length - 1));
+
+                    dbManager.DeleteStudent(ad, soyad, grp);
+                    OgrenciListesiniGuncelle();
+                }
+                catch { XtraMessageBox.Show("Silme işleminde hata oluştu."); }
+            }
+        }
+
+        private void BtnSilGrup_Click(object sender, EventArgs e)
+        {
+            string g = cmbGrup.Text;
+            if (g == "Yeni Grup Oluştur..." || string.IsNullOrEmpty(g)) return;
+
+            if (XtraMessageBox.Show($"'{g}' grubu ve içindeki tüm öğrenciler silinsin mi?", "Kritik Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                dbManager.DeleteAllInGroup(g);
+                cmbGrup.Properties.Items.Remove(g);
+                cmbAntrenmanGrup.Properties.Items.Remove(g);
+
+                cmbGrup.SelectedIndex = 0;
+                OgrenciListesiniGuncelle();
+            }
+        }
+
+        // --- GEÇMİŞ KAYIT SİLME ---
+        private void BtnGecmisSil_Click(object sender, EventArgs e)
+        {
+            // GridView'den Id'yi al
+            int rowHandle = gvGecmis.FocusedRowHandle;
+            if (rowHandle < 0) return;
+
+            if (XtraMessageBox.Show("Seçili antrenman kaydı silinsin mi?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            {
+                object idVal = gvGecmis.GetRowCellValue(rowHandle, "Id");
+                if (idVal != null)
+                {
+                    int id = Convert.ToInt32(idVal);
+                    dbManager.DeleteTrainingLog(id);
+                    cmbGrup_SelectedIndexChanged(null, null); // Listeyi yenile
+                }
+            }
+        }
+
+        private void BtnSeciliyiIndir_Click(object sender, EventArgs e)
+        {
+            // Önce seçiliyi yükle, sonra export et
+            GvGecmis_DoubleClick(gvGecmis, null);
+            ExportGrid(gcProgram, "SeciliAntrenmanDetay");
         }
     }
 }
