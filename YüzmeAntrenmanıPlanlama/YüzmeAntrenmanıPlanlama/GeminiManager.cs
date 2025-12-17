@@ -12,7 +12,7 @@ namespace YüzmeAntrenmanıPlanlama
         // -------------------------------------------------------------------------
         // BURAYA GROQ SİTESİNDEN ALDIĞIN 'gsk_' İLE BAŞLAYAN ŞİFREYİ YAPIŞTIR
         // -------------------------------------------------------------------------
-        private const string ApiKey = "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";
+        private const string ApiKey = "";
 
         // Groq API Adresi (OpenAI uyumlu format kullanır)
         private const string ApiUrl = "https://api.groq.com/openai/v1/chat/completions";
