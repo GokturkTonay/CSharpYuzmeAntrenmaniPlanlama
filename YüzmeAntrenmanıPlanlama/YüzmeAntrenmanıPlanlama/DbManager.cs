@@ -36,7 +36,6 @@ namespace YüzmeAntrenmanıPlanlama
                             Kilo INTEGER DEFAULT 0
                         )";
 
-                    // Icerik sütunu eklendi (TEXT formatında JSON tutacak)
                     string sqlLogs = @"
                         CREATE TABLE IF NOT EXISTS AntrenmanLoglari (
                             Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +99,51 @@ namespace YüzmeAntrenmanıPlanlama
             }
         }
 
+        // --- GÜNCELLENMİŞ METOT: ARTIK GRUP ADINI DA DEĞİŞTİRİYOR ---
+        public void UpdateStudentDetails(string ad, string soyad, string eskiGrup, string yeniGrup, int yas, int boy, int kilo)
+        {
+            using (var conn = new SQLiteConnection(connectionString))
+            {
+                conn.Open();
+                // Şartımız eski grup adı, güncellediğimiz ise yeni grup adı
+                string sql = "UPDATE Ogrenciler SET GrupAdi=@YeniGrup, Yas=@Yas, Boy=@Boy, Kilo=@Kilo WHERE Ad=@Ad AND Soyad=@Soyad AND GrupAdi=@EskiGrup";
+                using (var cmd = new SQLiteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@YeniGrup", yeniGrup);
+                    cmd.Parameters.AddWithValue("@Yas", yas);
+                    cmd.Parameters.AddWithValue("@Boy", boy);
+                    cmd.Parameters.AddWithValue("@Kilo", kilo);
+                    cmd.Parameters.AddWithValue("@Ad", ad);
+                    cmd.Parameters.AddWithValue("@Soyad", soyad);
+                    cmd.Parameters.AddWithValue("@EskiGrup", eskiGrup);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public DataRow GetStudentDetails(string ad, string soyad, string grup)
+        {
+            using (var conn = new SQLiteConnection(connectionString))
+            {
+                conn.Open();
+                string sql = "SELECT Yas, Boy, Kilo FROM Ogrenciler WHERE Ad=@Ad AND Soyad=@Soyad AND GrupAdi=@Grup";
+                using (var cmd = new SQLiteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@Ad", ad);
+                    cmd.Parameters.AddWithValue("@Soyad", soyad);
+                    cmd.Parameters.AddWithValue("@Grup", grup);
+
+                    using (var adapter = new SQLiteDataAdapter(cmd))
+                    {
+                        DataTable dt = new DataTable();
+                        adapter.Fill(dt);
+                        if (dt.Rows.Count > 0) return dt.Rows[0];
+                        return null;
+                    }
+                }
+            }
+        }
+
         public void DeleteTrainingLog(int id)
         {
             using (var conn = new SQLiteConnection(connectionString))
@@ -134,9 +178,6 @@ namespace YüzmeAntrenmanıPlanlama
             return list;
         }
 
-        // --- ANTRENMAN LOG İŞLEMLERİ (GÜNCELLENDİ) ---
-
-        // Yeni parametre: string jsonIcerik
         public void AddTrainingLog(string grup, DateTime tarih, int mesafe, int sure, string jsonIcerik)
         {
             using (var conn = new SQLiteConnection(connectionString))
@@ -149,19 +190,17 @@ namespace YüzmeAntrenmanıPlanlama
                     cmd.Parameters.AddWithValue("@Tarih", tarih);
                     cmd.Parameters.AddWithValue("@Mesafe", mesafe);
                     cmd.Parameters.AddWithValue("@Sure", sure);
-                    cmd.Parameters.AddWithValue("@Icerik", jsonIcerik); // İçeriği kaydediyoruz
+                    cmd.Parameters.AddWithValue("@Icerik", jsonIcerik);
                     cmd.ExecuteNonQuery();
                 }
             }
         }
 
-        // Filtreleme burada yapılıyor: WHERE GrupAdi = @Grup
         public DataTable GetTrainingHistoryByGroup(string grupAdi)
         {
             using (var conn = new SQLiteConnection(connectionString))
             {
                 conn.Open();
-                // Icerik ve Id sütunlarını da çekiyoruz ama Grid'de gizleyeceğiz veya kullanacağız
                 string sql = "SELECT Id, Tarih, Sure, Mesafe, Icerik FROM AntrenmanLoglari WHERE GrupAdi = @Grup ORDER BY Tarih DESC";
                 using (var cmd = new SQLiteCommand(sql, conn))
                 {
@@ -170,17 +209,13 @@ namespace YüzmeAntrenmanıPlanlama
                     {
                         DataTable dt = new DataTable();
                         adapter.Fill(dt);
-
-                        // Grid'de güzel görünsün diye formatlı tarih kolonu ekliyoruz (Sanal Kolon)
                         dt.Columns.Add("TarihFormatted", typeof(string));
-                        // Hız hesaplama
                         dt.Columns.Add("OrtHiz", typeof(string));
 
                         foreach (DataRow row in dt.Rows)
                         {
                             DateTime d = Convert.ToDateTime(row["Tarih"]);
                             row["TarihFormatted"] = d.ToString("dd.MM.yyyy HH:mm");
-
                             int dist = Convert.ToInt32(row["Mesafe"]);
                             int time = Convert.ToInt32(row["Sure"]);
                             if (dist > 0)

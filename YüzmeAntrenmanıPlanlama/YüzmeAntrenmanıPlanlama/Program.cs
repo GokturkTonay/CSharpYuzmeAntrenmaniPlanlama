@@ -20,6 +20,9 @@ namespace YüzmeAntrenmanıPlanlama
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             UserLookAndFeel.Default.SetSkinStyle(SkinStyle.WXI, SkinSvgPalette.WXI.Darkness);
+            DevExpress.UserSkins.BonusSkins.Register();
+            DevExpress.Skins.SkinManager.EnableFormSkins();
+            DevExpress.LookAndFeel.UserLookAndFeel.Default.SetSkinStyle("WXI");
             Application.Run(new Form1());
         }
     }
