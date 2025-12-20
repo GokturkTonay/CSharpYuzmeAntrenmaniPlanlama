@@ -1,16 +1,17 @@
-﻿using System;
+using DevExpress.XtraBars.Navigation;
+using DevExpress.XtraEditors;
+using DevExpress.XtraGrid;
+using DevExpress.XtraGrid.Views.Grid;
+using DevExpress.XtraGrid.Views.Grid.ViewInfo;
+using DevExpress.Data.Filtering;
+using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Newtonsoft.Json;
-using DevExpress.XtraEditors;
-using DevExpress.XtraBars.Navigation;
-using DevExpress.XtraGrid;
-using DevExpress.XtraGrid.Views.Grid;
-using DevExpress.Utils;
 
 namespace YüzmeAntrenmanıPlanlama
 {
@@ -31,9 +32,14 @@ namespace YüzmeAntrenmanıPlanlama
         private string seciliOgrenciSoyad = "";
         private string seciliOgrenciEskiGrup = "";
 
+        // Sürükle-Bırak için değişkenler
+        private GridHitInfo downHitInfo = null;
+
         public Form1()
         {
             InitializeComponent();
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+
             programListesi = new System.ComponentModel.BindingList<AntrenmanSatiri>();
             gcProgram.DataSource = programListesi;
 
@@ -43,112 +49,278 @@ namespace YüzmeAntrenmanıPlanlama
             if (cmbGrup.Properties.Items.Count > 0)
             {
                 cmbGrup.SelectedIndex = 0;
-                cmbGrup_SelectedIndexChanged(null, null);
             }
+
+            // Başlangıçta tüm öğrenci listesini grid'e yükle
+            TumOgrencileriYukle();
         }
 
         private void SetupEvents()
         {
             this.cmbGrup.Properties.TextEditStyle = DevExpress.XtraEditors.Controls.TextEditStyles.DisableTextEditor;
-            this.cmbGrup.SelectedIndexChanged += new EventHandler(this.cmbGrup_SelectedIndexChanged);
+            this.cmbAntrenmanGrup.Properties.TextEditStyle = DevExpress.XtraEditors.Controls.TextEditStyles.DisableTextEditor;
+
+            // Yeni Grid Filtreleme Olayları
+            this.txtGridAraCustom.EditValueChanged += (s, e) => ApplyGridFilters();
+            this.cmbGridFiltreGrup.SelectedIndexChanged += (s, e) => ApplyGridFilters();
+
+            // "Hizala" butonu olayı kaldırıldı.
+
+            // Grid Sürükle-Bırak Olayları
+            this.gcTumOgrenciler.MouseDown += GcTumOgrenciler_MouseDown;
+            this.gcTumOgrenciler.MouseMove += GcTumOgrenciler_MouseMove;
+            this.gcTumOgrenciler.DragOver += GcTumOgrenciler_DragOver;
+            this.gcTumOgrenciler.DragDrop += GcTumOgrenciler_DragDrop;
+
             this.cmbGrup.SelectedIndexChanged += (s, e) => txtGrupInput.Visible = cmbGrup.Text == "Yeni Grup Oluştur...";
 
-            this.btnOlustur.Click += new EventHandler(this.BtnOlustur_Click);
-            this.btnEkleOgrenci.Click += new EventHandler(this.BtnEkleOgrenci_Click);
-            this.btnSilOgrenci.Click += new EventHandler(this.BtnSilOgrenci_Click);
-            this.btnSilGrup.Click += new EventHandler(this.BtnSilGrup_Click);
-            this.btnPdfIndir.Click += (s, e) => ExportGrid(gcProgram, "Antrenman");
-            this.btnPDFOlarakIndirProfil.Click += (s, e) => ExportGrid(gcGecmis, "Gecmis");
-            this.btnSeciliyiIndir.Click += new EventHandler(this.BtnSeciliyiIndir_Click);
-            this.btnGecmisSil.Click += new EventHandler(this.BtnGecmisSil_Click);
+            this.btnOlustur.Click += BtnOlustur_Click;
+            this.btnEkleOgrenci.Click += BtnEkleOgrenci_Click;
+            this.btnSilOgrenci.Click += BtnSilOgrenci_Click;
+            this.btnSilGrup.Click += BtnSilGrup_Click;
+
+            this.btnPdfIndir.Click += (s, e) => ExportGrid(gcProgram, "Antrenman_Programi");
+            this.btnPDFOlarakIndirProfil.Click += (s, e) => ExportGrid(gcGecmis, "Gecmis_Antrenmanlar");
+            this.btnSeciliyiIndir.Click += BtnSeciliyiIndir_Click;
+
+            this.btnGecmisSil.Click += BtnGecmisSil_Click;
             this.gvGecmis.DoubleClick += GvGecmis_DoubleClick;
+
+            this.gvTumOgrenciler.DoubleClick += GvTumOgrenciler_DoubleClick;
 
             this.btnDetayKaydet.Click += BtnDetayKaydet_Click;
             this.btnDetayKapat.Click += (s, e) => flyoutOgrenciDetay.HidePopup();
+
+            this.tabControlProfilNested.SelectedPageChanged += (s, e) => {
+                if (e.Page == subPageGecmisAntrenmanlar && cmbGrup.Text != "Yeni Grup Oluştur...")
+                    GecmisAntrenmanlariYukle(cmbGrup.Text);
+            };
         }
 
         private void InitializeGroups()
         {
+            this.cmbGridFiltreGrup.Properties.Items.Add("Tüm Gruplar");
             foreach (string grup in initialGroups)
             {
                 if (!this.cmbGrup.Properties.Items.Contains(grup)) this.cmbGrup.Properties.Items.Add(grup);
                 if (!this.cmbAntrenmanGrup.Properties.Items.Contains(grup)) this.cmbAntrenmanGrup.Properties.Items.Add(grup);
+                if (!this.cmbGridFiltreGrup.Properties.Items.Contains(grup)) this.cmbGridFiltreGrup.Properties.Items.Add(grup);
             }
             this.cmbGrup.Properties.Items.Add("Yeni Grup Oluştur...");
             this.cmbGrup.SelectedIndex = 0;
             this.cmbAntrenmanGrup.SelectedIndex = 0;
+            this.cmbGridFiltreGrup.SelectedIndex = 0;
         }
 
-        private void OgrenciListesiniGuncelle()
+        // "Hizala" butonu metodu kaldırıldı.
+
+        // --- GRİD FİLTRELEME MANTIĞI ---
+        private void ApplyGridFilters()
         {
-            aceMainGroup.Elements.Clear();
-            string selectedGroup = cmbGrup.Text;
+            string searchText = txtGridAraCustom.Text.Trim();
+            string selectedGroup = cmbGridFiltreGrup.Text;
 
-            if (selectedGroup == "Yeni Grup Oluştur..." || string.IsNullOrEmpty(selectedGroup)) return;
+            // Filtreleme yapılırken gruplamayı kaldır
+            colOgrGrup.GroupIndex = -1;
 
-            var list = dbManager.GetFormattedStudentList();
+            GroupOperator finalFilter = new GroupOperator(GroupOperatorType.And);
 
-            accordionOgrenciler.ContextButtonClick -= AccordionOgrenciler_ContextButtonClick;
-            accordionOgrenciler.ContextButtonClick += AccordionOgrenciler_ContextButtonClick;
-
-            foreach (var item in list)
+            if (!string.IsNullOrEmpty(searchText))
             {
-                if (item.Contains($"({selectedGroup})"))
+                CriteriaOperator searchCriteria = CriteriaOperator.Parse("Contains([Ad], ?) OR Contains([Soyad], ?)", searchText, searchText);
+                finalFilter.Operands.Add(searchCriteria);
+            }
+
+            if (selectedGroup != "Tüm Gruplar" && !string.IsNullOrEmpty(selectedGroup))
+            {
+                CriteriaOperator groupCriteria = new BinaryOperator("Grup", selectedGroup, BinaryOperatorType.Equal);
+                finalFilter.Operands.Add(groupCriteria);
+            }
+
+            gvTumOgrenciler.ActiveFilterCriteria = finalFilter;
+        }
+
+        // --- GRİD SÜRÜKLE-BIRAK MANTIĞI ---
+        private void GcTumOgrenciler_MouseDown(object sender, MouseEventArgs e)
+        {
+            GridView view = gcTumOgrenciler.MainView as GridView;
+            downHitInfo = null;
+            GridHitInfo hitInfo = view.CalcHitInfo(new Point(e.X, e.Y));
+            if (hitInfo.InRow && view.IsGroupRow(hitInfo.RowHandle))
+            {
+                downHitInfo = hitInfo;
+            }
+        }
+
+        private void GcTumOgrenciler_MouseMove(object sender, MouseEventArgs e)
+        {
+            GridView view = gcTumOgrenciler.MainView as GridView;
+            if (e.Button == MouseButtons.Left && downHitInfo != null)
+            {
+                Size dragSize = SystemInformation.DragSize;
+                Rectangle dragRect = new Rectangle(new Point(downHitInfo.HitPoint.X - dragSize.Width / 2,
+                    downHitInfo.HitPoint.Y - dragSize.Height / 2), dragSize);
+
+                if (!dragRect.Contains(new Point(e.X, e.Y)))
                 {
-                    AccordionControlElement el = new AccordionControlElement(ElementStyle.Item);
-                    el.Text = item;
-
-                    AccordionContextButton btnDetay = new AccordionContextButton();
-                    btnDetay.Name = "btnDetay";
-
-                    Bitmap bmp = new Bitmap(24, 24);
-                    using (Graphics g = Graphics.FromImage(bmp))
-                    {
-                        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-                        // Oku beyaz yaptık ki koyu temada görünsün
-                        g.DrawString("➤", new Font("Segoe UI", 12, FontStyle.Bold), Brushes.White, 2, 2);
-                    }
-                    btnDetay.ImageOptions.Image = bmp;
-                    btnDetay.ToolTip = "Detayları Gör";
-                    btnDetay.Tag = el;
-
-                    el.ContextButtons.Add(btnDetay);
-                    aceMainGroup.Elements.Add(el);
+                    view.GridControl.DoDragDrop(downHitInfo.RowHandle, DragDropEffects.Move);
+                    downHitInfo = null;
+                    DevExpress.Utils.DXMouseEventArgs.GetMouseArgs(e).Handled = true;
                 }
             }
         }
 
-        // --- KAPA - AÇ MANTIĞI ---
-        private async void AccordionOgrenciler_ContextButtonClick(object sender, ContextItemClickEventArgs e)
+        private void GcTumOgrenciler_DragOver(object sender, DragEventArgs e)
         {
-            var btn = e.Item as AccordionContextButton;
-            if (btn == null) return;
-            AccordionControlElement el = btn.Tag as AccordionControlElement;
-            if (el == null) return;
+            if (e.Data.GetDataPresent(typeof(int)))
+            {
+                GridView view = gcTumOgrenciler.MainView as GridView;
+                GridHitInfo hitInfo = view.CalcHitInfo(gcTumOgrenciler.PointToClient(new Point(e.X, e.Y)));
+                if (hitInfo.InRow && view.IsGroupRow(hitInfo.RowHandle) && hitInfo.RowHandle != (int)e.Data.GetData(typeof(int)))
+                {
+                    e.Effect = DragDropEffects.Move;
+                }
+                else
+                {
+                    e.Effect = DragDropEffects.None;
+                }
+            }
+        }
+
+        private void GcTumOgrenciler_DragDrop(object sender, DragEventArgs e)
+        {
+            GridView view = gcTumOgrenciler.MainView as GridView;
+            Point dragPointScreen = new Point(e.X, e.Y);
+            Point dragPointClient = gcTumOgrenciler.PointToClient(dragPointScreen);
+            GridHitInfo hitInfo = view.CalcHitInfo(dragPointClient);
+
+            int sourceRowHandle = (int)e.Data.GetData(typeof(int));
+            int targetRowHandle = hitInfo.RowHandle;
+
+            string movingGroup = view.GetGroupRowValue(sourceRowHandle).ToString();
+            string targetGroup = view.GetGroupRowValue(targetRowHandle).ToString();
+
+            GridViewInfo viewInfo = view.GetViewInfo() as GridViewInfo;
+            GridRowInfo groupRowInfo = viewInfo.GetGridRowInfo(targetRowHandle);
+            Rectangle targetRowBounds = groupRowInfo.Bounds;
+
+            int relativeY = dragPointClient.Y - targetRowBounds.Y;
+            bool insertBefore = relativeY < (targetRowBounds.Height / 2);
+
+            try
+            {
+                dbManager.UpdateGroupOrder(movingGroup, targetGroup, insertBefore);
+                TumOgrencileriYukle();
+            }
+            catch (Exception ex)
+            {
+                XtraMessageBox.Show("Sıralama güncellenirken hata oluştu: " + ex.Message);
+            }
+        }
+
+        // ===================================================================
+
+        private void TumOgrencileriYukle()
+        {
+            DataTable dtOgrenciler = dbManager.GetAllStudents();
+            gcTumOgrenciler.DataSource = dtOgrenciler;
+            // Veri yüklendiğinde filtre varsa uygula, yoksa grupla
+            if (string.IsNullOrEmpty(txtGridAraCustom.Text) && cmbGridFiltreGrup.Text == "Tüm Gruplar")
+            {
+                colOgrGrup.GroupIndex = 0;
+                gvTumOgrenciler.ExpandAllGroups();
+            }
+            else
+            {
+                ApplyGridFilters();
+            }
+        }
+
+        // --- ÖĞRENCİ EKLEME METODU (Hizala Mantığı Buraya Eklendi) ---
+        private void BtnEkleOgrenci_Click(object sender, EventArgs e)
+        {
+            string a = txtAd.Text.Trim();
+            string s = txtSoyad.Text.Trim();
+            string g = cmbGrup.Text == "Yeni Grup Oluştur..." ? txtGrupInput.Text.Trim() : cmbGrup.Text;
+
+            if (!string.IsNullOrEmpty(a) && !string.IsNullOrEmpty(s) && !string.IsNullOrEmpty(g))
+            {
+                dbManager.AddStudent(a, s, g);
+                if (!cmbGrup.Properties.Items.Contains(g))
+                {
+                    cmbGrup.Properties.Items.Insert(cmbGrup.Properties.Items.Count - 1, g);
+                    cmbAntrenmanGrup.Properties.Items.Add(g);
+                    cmbGridFiltreGrup.Properties.Items.Add(g);
+                }
+
+                if (cmbGrup.Text == "Yeni Grup Oluştur...")
+                    cmbGrup.SelectedItem = g;
+
+                // --- HİZALA MANTIĞI BAŞLANGICI ---
+                // 1. Filtreleri temizle
+                txtGridAraCustom.Text = "";
+                cmbGridFiltreGrup.SelectedIndex = 0; // "Tüm Gruplar"
+                gvTumOgrenciler.ClearColumnsFilter();
+
+                // 2. Veriyi yükle (TumOgrencileriYukle filtreler temizken otomatik gruplar)
+                TumOgrencileriYukle();
+                // --- HİZALA MANTIĞI BİTİŞİ ---
+
+                txtAd.Text = ""; txtAd.EditValue = null;
+                txtSoyad.Text = ""; txtSoyad.EditValue = null;
+                txtGrupInput.Text = "";
+                XtraMessageBox.Show("Öğrenci başarıyla eklendi.", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                XtraMessageBox.Show("Lütfen Ad, Soyad ve Grup bilgilerini eksiksiz giriniz.", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void BtnSilGrup_Click(object sender, EventArgs e)
+        {
+            string g = cmbGrup.Text;
+            if (g == "Yeni Grup Oluştur..." || string.IsNullOrEmpty(g))
+            {
+                XtraMessageBox.Show("Lütfen silinecek geçerli bir grup seçin.");
+                return;
+            }
+
+            if (XtraMessageBox.Show($"'{g}' grubunu ve içindeki TÜM ÖĞRENCİLERİ silmek istediğinize emin misiniz? Bu işlem geri alınamaz!", "Kritik Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                dbManager.DeleteAllInGroup(g);
+                cmbGrup.Properties.Items.Remove(g);
+                cmbAntrenmanGrup.Properties.Items.Remove(g);
+                cmbGridFiltreGrup.Properties.Items.Remove(g);
+
+                cmbGrup.SelectedIndex = 0;
+                TumOgrencileriYukle();
+            }
+        }
+
+        private async void GvTumOgrenciler_DoubleClick(object sender, EventArgs e)
+        {
+            GridView view = sender as GridView;
+            GridHitInfo hitInfo = view.CalcHitInfo(view.GridControl.PointToClient(Control.MousePosition));
+
+            if (!hitInfo.InRow || view.IsGroupRow(hitInfo.RowHandle)) return;
 
             if (flyoutOgrenciDetay.IsPopupOpen)
             {
                 flyoutOgrenciDetay.HidePopup();
-                await Task.Delay(300); // Kapanma animasyonu için bekle
+                await Task.Delay(300);
             }
 
-            string fullText = el.Text;
-            int idx = fullText.LastIndexOf('(');
-            if (idx == -1) return;
+            string ad = view.GetRowCellValue(hitInfo.RowHandle, "Ad")?.ToString();
+            string soyad = view.GetRowCellValue(hitInfo.RowHandle, "Soyad")?.ToString();
+            string grp = view.GetRowCellValue(hitInfo.RowHandle, "Grup")?.ToString();
 
-            string grp = fullText.Substring(idx + 1).Replace(")", "");
-            string namePart = fullText.Substring(0, idx).Trim();
-            var parts = namePart.Split(' ');
-            if (parts.Length < 2) return;
-
-            string soyad = parts.Last();
-            string ad = string.Join(" ", parts.Take(parts.Length - 1));
+            if (string.IsNullOrEmpty(ad) || string.IsNullOrEmpty(soyad)) return;
 
             seciliOgrenciAd = ad;
             seciliOgrenciSoyad = soyad;
             seciliOgrenciEskiGrup = grp;
 
-            // Grup Listesini Doldur
             cmbFlyoutGrup.Properties.Items.Clear();
             foreach (var item in cmbGrup.Properties.Items)
                 if (item.ToString() != "Yeni Grup Oluştur...") cmbFlyoutGrup.Properties.Items.Add(item);
@@ -177,10 +349,13 @@ namespace YüzmeAntrenmanıPlanlama
             dbManager.UpdateStudentDetails(seciliOgrenciAd, seciliOgrenciSoyad, seciliOgrenciEskiGrup, yeniGrup, (int)nudYas.Value, (int)nudBoy.Value, (int)nudKilo.Value);
             flyoutOgrenciDetay.HidePopup();
             XtraMessageBox.Show("Bilgiler güncellendi.", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            OgrenciListesiniGuncelle();
+            TumOgrencileriYukle();
+            if (seciliOgrenciEskiGrup != yeniGrup && cmbGrup.Properties.Items.Contains(yeniGrup))
+            {
+                cmbGrup.SelectedItem = yeniGrup;
+            }
         }
 
-        // --- DETAYLI PROMPT ALANI ---
         private async void BtnOlustur_Click(object sender, EventArgs e)
         {
             string grp = cmbAntrenmanGrup.Text;
@@ -190,132 +365,136 @@ namespace YüzmeAntrenmanıPlanlama
             int sure = (int)nudToplamSure.Value;
             int mesafe = (int)nudToplamMesafe.Value;
 
-            string eski = btnOlustur.Text;
+            string eskiButtonMetni = btnOlustur.Text;
             btnOlustur.Text = "Yapay Zeka Hazırlıyor...";
             btnOlustur.Enabled = false;
 
             try
             {
-                // Geçmiş veriyi al
                 string gecmisOzet = "Bu grup için ilk antrenman.";
                 try
                 {
                     if (dbManager.GetTrainingHistoryByGroup(grp).Rows.Count > 0)
-                        gecmisOzet = "Bu grubun geçmiş antrenmanları var, seviyeyi koruyarak ilerle.";
+                        gecmisOzet = "Bu grubun geçmiş antrenmanları var, önceki tempoyu dikkate alarak seviyeyi koruyacak veya artıracak şekilde ilerle.";
                 }
                 catch { }
 
-                // --- DETAYLI PROMPT ---
                 string prompt = $@"
-                Sen uzman bir yüzme antrenörüsün. Aşağıdaki kriterlere göre profesyonel bir yüzme antrenmanı planla.
-                
-                **GRUP BİLGİLERİ:**
-                - Hedef Grup: {grp}
-                - Antrenman Geçmişi: {gecmisOzet}
-                
-                **ANTRENMAN HEDEFLERİ:**
-                - Odak Noktası (Biyomotorik): {odak.ToUpper()}
-                - Yüzme Stili: {stil}
-                - Toplam Mesafe Hedefi: ~{mesafe} metre
-                - Toplam Süre: {sure} dakika
-                - Ekipman Durumu: {ekipman}
+                 Sen uzman bir yüzme antrenörüsün. Aşağıdaki kriterlere göre profesyonel ve detaylı bir yüzme antrenmanı planla.
+                 
+                 **GRUP BİLGİLERİ:**
+                 - Hedef Grup: {grp}
+                 - Antrenman Geçmişi Durumu: {gecmisOzet}
+                 
+                 **ANTRENMAN HEDEFLERİ:**
+                 - Odak Noktası (Biyomotorik Yetenek): {odak.ToUpper()}
+                 - Yüzme Stilleri: {stil} (Eğer birden fazla stil seçildiyse, bunları antrenmanın ana setlerine mantıklı bir şekilde dağıt, kombine et veya dönüşümlü olarak kullan.)
+                 - Toplam Mesafe Hedefi: Yaklaşık {mesafe} metre
+                 - Toplam Süre: {sure} dakika
+                 - Ekipman Durumu: {ekipman}
 
-                **İSTENEN ÇIKTI FORMATI:**
-                Lütfen cevabını SADECE aşağıdaki JSON formatında ver. Başka hiçbir açıklama yazma.
-                Antrenmanı mantıklı bölümlere ayır (Isınma, Ana Set, Teknik Driller, Soğuma vb.).
-                Setleri detaylandır (Örn: '4x50m', '8x100m @1:45', '200m Karışık' gibi).
+                 **İSTENEN ÇIKTI FORMATI:**
+                 Lütfen cevabını SADECE aşağıdaki JSON dizisi formatında ver. Başka hiçbir açıklama, giriş veya bitiş cümlesi yazma.
+                 Antrenmanı mantıklı bölümlere ayır (Isınma, Teknik Driller, Ana Set, İkinci Set, Soğuma vb.).
+                 'aktivite' kısmında setleri detaylandır (Örn: '4x50m Serbest @1:00', '200m Karışık Drill', '8x25m Seçilen Stillerde Sprint' gibi).
+                 'detay' kısmında tempo, nefes, odaklanılacak teknik nokta gibi bilgileri ver.
 
-                {{
-                  ""antrenman"": [
-                    {{ ""bolum"": ""ISINMA"", ""aktivite"": ""200m Serbest + 200m Sırt"", ""detay"": ""Rahat tempo, uzun kulaç"" }},
-                    {{ ""bolum"": ""ANA SET"", ""aktivite"": ""8x50m {stil} Sprint"", ""detay"": ""@1:00 Çıkış, Maksimum efor"" }},
-                    {{ ""bolum"": ""SOĞUMA"", ""aktivite"": ""200m Gevşeme"", ""detay"": ""Çok yavaş"" }}
-                  ]
-                }}
-                ";
+                 [
+                   {{ ""bolum"": ""ISINMA"", ""aktivite"": ""Örnek aktivite"", ""detay"": ""Örnek detay"" }},
+                   {{ ""bolum"": ""ANA SET"", ""aktivite"": ""Seçilen stillere uygun ana set içeriği"", ""detay"": ""Tempo ve efor bilgisi"" }}
+                 ]
+                 ";
 
                 GeminiManager ai = new GeminiManager();
                 string json = await ai.AntrenmanProgramiIste(prompt);
 
-                // JSON Temizliği
                 json = json.Replace("```json", "").Replace("```", "").Trim();
                 if (json.StartsWith("json")) json = json.Substring(4).Trim();
 
                 var list = JsonConvert.DeserializeObject<List<AntrenmanSatiri>>(json);
-                // Eğer kök obje varsa ({"antrenman": [...]})
+
                 if (list == null)
                 {
                     var root = JsonConvert.DeserializeObject<Dictionary<string, List<AntrenmanSatiri>>>(json);
                     if (root != null && root.ContainsKey("antrenman")) list = root["antrenman"];
+                    if (list == null && root != null && root.Values.Count > 0) list = root.Values.First();
                 }
 
-                if (list != null)
+                if (list != null && list.Count > 0)
                 {
                     programListesi.Clear();
                     foreach (var i in list) programListesi.Add(i);
 
                     dbManager.AddTrainingLog(grp, DateTime.Now, mesafe, sure, json);
-                    if (cmbGrup.Text == grp) cmbGrup_SelectedIndexChanged(null, null);
+
+                    if (cmbAntrenmanGrup.Text == cmbGrup.Text)
+                    {
+                        GecmisAntrenmanlariYukle(grp);
+                    }
+
+                    XtraMessageBox.Show("Antrenman programı başarıyla oluşturuldu!", "Tamamlandı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    XtraMessageBox.Show("Yapay zeka yanıtı uygun formatta değildi. Lütfen tekrar deneyin.\n\nGelen Yanıt:\n" + json.Substring(0, Math.Min(json.Length, 200)) + "...", "Format Hatası", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
             catch (Exception ex)
             {
-                XtraMessageBox.Show("Hata oluştu:\n" + ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                XtraMessageBox.Show("Antrenman oluşturulurken bir hata meydana geldi:\n" + ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
-                btnOlustur.Text = eski;
+                btnOlustur.Text = eskiButtonMetni;
                 btnOlustur.Enabled = true;
-            }
-        }
-
-        // --- DİĞER FONKSİYONLAR ---
-        private void BtnEkleOgrenci_Click(object sender, EventArgs e)
-        {
-            string a = txtAd.Text, s = txtSoyad.Text, g = cmbGrup.Text == "Yeni Grup Oluştur..." ? txtGrupInput.Text : cmbGrup.Text;
-            if (!string.IsNullOrEmpty(a))
-            {
-                dbManager.AddStudent(a, s, g);
-                if (!cmbGrup.Properties.Items.Contains(g)) { cmbGrup.Properties.Items.Insert(cmbGrup.Properties.Items.Count - 1, g); cmbAntrenmanGrup.Properties.Items.Add(g); }
-                if (cmbGrup.Text == "Yeni Grup Oluştur...") cmbGrup.SelectedItem = g; else OgrenciListesiniGuncelle();
-                txtAd.Text = ""; txtAd.EditValue = null; txtSoyad.Text = ""; txtSoyad.EditValue = null;
             }
         }
 
         private void BtnSilOgrenci_Click(object sender, EventArgs e)
         {
-            var sel = accordionOgrenciler.SelectedElement;
-            if (sel == null || sel.Style == ElementStyle.Group) { XtraMessageBox.Show("Seçim yapın."); return; }
-            string t = sel.Text;
-            if (XtraMessageBox.Show("Sil?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            int focusedRowHandle = gvTumOgrenciler.FocusedRowHandle;
+            if (focusedRowHandle < 0 || gvTumOgrenciler.IsGroupRow(focusedRowHandle))
             {
-                int idx = t.LastIndexOf('('); string g = t.Substring(idx + 1).Replace(")", ""), n = t.Substring(0, idx).Trim(); var p = n.Split(' ');
-                dbManager.DeleteStudent(string.Join(" ", p.Take(p.Length - 1)), p.Last(), g); OgrenciListesiniGuncelle();
+                XtraMessageBox.Show("Lütfen listeden silinecek öğrenciyi seçin.");
+                return;
+            }
+
+            string ad = gvTumOgrenciler.GetRowCellValue(focusedRowHandle, "Ad")?.ToString();
+            string soyad = gvTumOgrenciler.GetRowCellValue(focusedRowHandle, "Soyad")?.ToString();
+            string grup = gvTumOgrenciler.GetRowCellValue(focusedRowHandle, "Grup")?.ToString();
+
+            if (XtraMessageBox.Show($"'{ad} {soyad}' adlı öğrenciyi silmek istediğinize emin misiniz?", "Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                dbManager.DeleteStudent(ad, soyad, grup);
+                TumOgrencileriYukle();
             }
         }
 
         private string GetBiyomotor() { return btnDayaniklilik.Checked ? "Dayanıklılık" : (btnSurat.Checked ? "Sürat" : (btnKuvvet.Checked ? "Kuvvet" : (btnEsneklik.Checked ? "Esneklik" : "Koordinasyon"))); }
-        private string GetSecilenStiller() { List<string> s = new List<string>(); if (btnSerbest.Checked) s.Add("Serbest"); if (btnSirtustu.Checked) s.Add("Sırtüstü"); if (btnKurbagalama.Checked) s.Add("Kurbağa"); if (btnKelebek.Checked) s.Add("Kelebek"); return s.Count > 0 ? string.Join(", ", s) : "Karışık"; }
 
-        private void cmbGrup_SelectedIndexChanged(object sender, EventArgs e)
+        private string GetSecilenStiller()
         {
-            string g = cmbGrup.Text;
-            if (g != "Yeni Grup Oluştur...")
+            List<string> s = new List<string>();
+            if (btnSerbest.Checked) s.Add("Serbest");
+            if (btnSirtustu.Checked) s.Add("Sırtüstü");
+            if (btnKurbagalama.Checked) s.Add("Kurbağa");
+            if (btnKelebek.Checked) s.Add("Kelebek");
+            return s.Count > 0 ? string.Join(", ", s) : "Karışık";
+        }
+
+        private void GecmisAntrenmanlariYukle(string grupAdi)
+        {
+            try
             {
-                OgrenciListesiniGuncelle();
-                try
-                {
-                    DataTable dt = dbManager.GetTrainingHistoryByGroup(g);
-                    gcGecmis.DataSource = dt;
-                    var v = gvGecmis;
-                    if (v.Columns["Id"] != null) v.Columns["Id"].Visible = false;
-                    if (v.Columns["Icerik"] != null) v.Columns["Icerik"].Visible = false;
-                    if (v.Columns["Tarih"] != null) v.Columns["Tarih"].Visible = false;
-                    if (v.Columns["TarihFormatted"] != null) { v.Columns["TarihFormatted"].Caption = "Tarih"; v.Columns["TarihFormatted"].VisibleIndex = 0; }
-                }
-                catch { }
+                DataTable dt = dbManager.GetTrainingHistoryByGroup(grupAdi);
+                gcGecmis.DataSource = dt;
+                var v = gvGecmis;
+                if (v.Columns["Id"] != null) v.Columns["Id"].Visible = false;
+                if (v.Columns["Icerik"] != null) v.Columns["Icerik"].Visible = false;
+                if (v.Columns["Tarih"] != null) v.Columns["Tarih"].Visible = false;
+                if (v.Columns["TarihFormatted"] != null) { v.Columns["TarihFormatted"].Caption = "Tarih"; v.Columns["TarihFormatted"].VisibleIndex = 0; }
             }
-            else { gcGecmis.DataSource = null; aceMainGroup.Elements.Clear(); }
+            catch { gcGecmis.DataSource = null; }
         }
 
         private void GvGecmis_DoubleClick(object sender, EventArgs e)
@@ -332,15 +511,56 @@ namespace YüzmeAntrenmanıPlanlama
                         var root = JsonConvert.DeserializeObject<Dictionary<string, List<AntrenmanSatiri>>>(json);
                         if (root != null && root.ContainsKey("antrenman")) list = root["antrenman"];
                     }
-                    if (list != null) { programListesi.Clear(); foreach (var i in list) programListesi.Add(i); tabControl1.SelectedTabPage = tabPageAntrenmanOlustur; }
+                    if (list != null)
+                    {
+                        programListesi.Clear();
+                        foreach (var i in list) programListesi.Add(i);
+                        tabControlAna.SelectedTabPage = tabPageAntrenmanOlustur;
+                        XtraMessageBox.Show("Geçmiş antrenman programı yüklendi.", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                 }
-                catch { }
+                catch (Exception ex) { XtraMessageBox.Show("Antrenman yüklenirken hata: " + ex.Message); }
             }
         }
 
-        private void ExportGrid(GridControl g, string n) { string p = $"{n}_{DateTime.Now:yyyyMMdd_HHmm}.pdf"; if ((g.MainView as GridView).RowCount > 0) { g.ExportToPdf(p); System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo() { FileName = p, UseShellExecute = true }); } }
-        private void BtnSilGrup_Click(object sender, EventArgs e) { string g = cmbGrup.Text; if (g != "Yeni Grup Oluştur..." && XtraMessageBox.Show("Grup sil?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes) { dbManager.DeleteAllInGroup(g); cmbGrup.Properties.Items.Remove(g); cmbAntrenmanGrup.Properties.Items.Remove(g); cmbGrup.SelectedIndex = 0; OgrenciListesiniGuncelle(); } }
-        private void BtnGecmisSil_Click(object sender, EventArgs e) { int h = gvGecmis.FocusedRowHandle; if (h >= 0 && XtraMessageBox.Show("Sil?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes) { dbManager.DeleteTrainingLog(Convert.ToInt32(gvGecmis.GetRowCellValue(h, "Id"))); cmbGrup_SelectedIndexChanged(null, null); } }
-        private void BtnSeciliyiIndir_Click(object sender, EventArgs e) { GvGecmis_DoubleClick(gvGecmis, null); ExportGrid(gcProgram, "Detay"); }
+        private void ExportGrid(GridControl g, string n)
+        {
+            string fileName = $"{n}_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+            if ((g.MainView as GridView).RowCount > 0)
+            {
+                try
+                {
+                    g.ExportToPdf(fileName);
+                    if (XtraMessageBox.Show($"PDF dosyası oluşturuldu:\n{fileName}\n\nDosyayı şimdi açmak ister misiniz?", "Başarılı", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                    {
+                        var psi = new System.Diagnostics.ProcessStartInfo() { FileName = fileName, UseShellExecute = true };
+                        System.Diagnostics.Process.Start(psi);
+                    }
+                }
+                catch (Exception ex) { XtraMessageBox.Show("PDF oluşturulurken hata: " + ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            }
+            else
+            {
+                XtraMessageBox.Show("Dışa aktarılacak veri bulunamadı.", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void BtnGecmisSil_Click(object sender, EventArgs e)
+        {
+            int h = gvGecmis.FocusedRowHandle;
+            if (h < 0) { XtraMessageBox.Show("Lütfen silinecek geçmiş kaydını seçin."); return; }
+            if (XtraMessageBox.Show("Bu antrenman kaydını kalıcı olarak silmek istediğinize emin misiniz?", "Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                int id = Convert.ToInt32(gvGecmis.GetRowCellValue(h, "Id"));
+                dbManager.DeleteTrainingLog(id);
+                GecmisAntrenmanlariYukle(cmbGrup.Text);
+            }
+        }
+
+        private void BtnSeciliyiIndir_Click(object sender, EventArgs e)
+        {
+            GvGecmis_DoubleClick(gvGecmis, null);
+            ExportGrid(gcProgram, "Secili_Gecmis_Antrenman");
+        }
     }
 }
